@@ -1,5 +1,17 @@
+# Core Flask
 Flask==3.0.0
 Flask-SocketIO==5.3.5
 Flask-CORS==4.0.0
 python-socketio==5.10.0
 eventlet==0.33.3
+
+# Segurança
+bcrypt==4.1.2
+python-dotenv==1.0.0
+
+# Google Sheets Integration
+google-auth==2.25.2
+google-api-python-client==2.110.0
+
+# HTTP Requests
+requests==2.31.0

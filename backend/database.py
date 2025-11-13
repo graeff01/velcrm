@@ -1,5 +1,6 @@
 import sqlite3
-import hashlib
+import bcrypt
+import hashlib  # Manter temporariamente para migração de hashes antigos
 
 class Database:
     def __init__(self, db_name="crm_whatsapp.db"):
@@ -106,17 +107,54 @@ class Database:
     # USUÁRIOS
     # =======================
     def hash_password(self, password):
+        """Hash de senha usando bcrypt (seguro contra força bruta)"""
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
+
+    def _is_sha256_hash(self, hash_string):
+        """Detecta se é um hash SHA256 antigo (64 caracteres hexadecimais)"""
+        return len(hash_string) == 64 and all(c in '0123456789abcdef' for c in hash_string)
+
+    def _sha256_hash(self, password):
+        """Hash SHA256 (DEPRECATED - apenas para migração de senhas antigas)"""
         return hashlib.sha256(password.encode()).hexdigest()
 
     def authenticate_user(self, username, password):
+        """Autentica usuário com suporte a migração de hashes SHA256 → bcrypt"""
         conn = self.get_connection()
         c = conn.cursor()
         c.execute("SELECT * FROM users WHERE username = ? AND active = 1", (username,))
         user = c.fetchone()
-        conn.close()
-        if user and user["password"] == self.hash_password(password):
-            return dict(user)
-        return None
+
+        if not user:
+            conn.close()
+            return None
+
+        stored_hash = user["password"]
+
+        # Verificar se é hash SHA256 antigo
+        if self._is_sha256_hash(stored_hash):
+            # Comparar com SHA256
+            if stored_hash == self._sha256_hash(password):
+                # ✅ Senha correta! Migrar para bcrypt automaticamente
+                user_id = user["id"]
+                new_hash = self.hash_password(password)
+                c.execute("UPDATE users SET password = ? WHERE id = ?", (new_hash, user_id))
+                conn.commit()
+                print(f"🔄 Senha do usuário '{username}' migrada de SHA256 → bcrypt")
+                conn.close()
+                return dict(user)
+            else:
+                conn.close()
+                return None
+
+        # Hash bcrypt (novo sistema)
+        else:
+            conn.close()
+            if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
+                return dict(user)
+            return None
 
     def create_user(self, username, password, name, role):
         try:

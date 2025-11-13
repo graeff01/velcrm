@@ -5,7 +5,7 @@ from notification_service import NotificationService
 from database import Database
 from whatsapp_service import WhatsAppService
 from middlewares import (
-    rate_limit, validate_request, handle_errors, 
+    rate_limit, validate_request, handle_errors,
     InputValidator, add_security_headers, AuditLogger
 )
 from utils import Paginator, MessageSearcher, LeadSearcher, PerformanceCache
@@ -17,18 +17,24 @@ from advanced_cache import cached, invalidate_cache, get_cache_stats
 from alert_system import AlertSystem
 from alert_monitoring_service import AlertMonitoringService, check_alerts_once
 from gestor_whatsapp_notifier import GestorWhatsAppNotifier
+import os
+from dotenv import load_dotenv
 
+# Carregar variáveis de ambiente
+load_dotenv()
 
 # =======================
 # CONFIGURAÇÃO PRINCIPAL
 # =======================
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "sua-chave-secreta-aqui-mude-em-producao"
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "fallback-insecure-key-change-immediately")
+app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH", 16 * 1024 * 1024))
 
-CORS(app, supports_credentials=True, origins=["http://localhost:3000"])
+# CORS - Usar variável de ambiente para produção
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+CORS(app, supports_credentials=True, origins=cors_origins)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins=cors_origins, async_mode="threading")
 
 # Inicializar serviço de notificações
 notification_service = NotificationService(socketio)
@@ -96,11 +102,6 @@ def role_required(*roles):
 # ========================================
 
 from banco.google_sheets_service import GoogleSheetsService
-import os
-from dotenv import load_dotenv
-
-# Carregar variáveis de ambiente
-load_dotenv()
 
 # Inicializar Google Sheets
 sheets_service = None
