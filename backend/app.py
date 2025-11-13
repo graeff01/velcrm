@@ -12,6 +12,8 @@ from utils import Paginator, MessageSearcher, LeadSearcher, PerformanceCache
 import asyncio
 from functools import wraps
 from database_tags_sla import extend_database_with_tags_sla
+from database_ia import extend_database_with_ia
+from ia_assistant import IAAssistant
 from datetime import datetime
 from advanced_cache import cached, invalidate_cache, get_cache_stats
 from alert_system import AlertSystem
@@ -42,9 +44,19 @@ notification_service = NotificationService(socketio)
 # Inicialização dos serviços
 db = Database()
 extend_database_with_tags_sla(db)
+extend_database_with_ia(db)  # 🤖 Adicionar tabelas de IA
 whatsapp = WhatsAppService(db, socketio)
 validator = InputValidator()
 audit_logger = AuditLogger(db)
+
+# 🤖 Inicializar IA Assistant
+ia_assistant = None
+if os.getenv("IA_HABILITADA", "True") == "True":
+    try:
+        ia_assistant = IAAssistant(db)
+        print("🤖 IA Assistant inicializado!")
+    except Exception as e:
+        print(f"⚠️ IA Assistant desabilitado: {e}")
 
 # Utilitários
 message_searcher = MessageSearcher(db)
@@ -923,6 +935,37 @@ def webhook_message():
         # 🔹 Log de histórico
         db.add_lead_log(lead["id"], "mensagem_recebida", name, content[:100])
 
+        # 🤖 RESPOSTA AUTOMÁTICA DA IA
+        if ia_assistant:
+            try:
+                resposta_ia = ia_assistant.processar_mensagem(lead["id"], content)
+
+                if resposta_ia:
+                    # Enviar resposta via WhatsApp
+                    success = whatsapp.send_message(phone, resposta_ia, user_id=0)  # user_id=0 = IA
+
+                    if success:
+                        # Registrar mensagem da IA no banco
+                        db.add_message(lead["id"], "ia", "Assistente Virtual", resposta_ia)
+                        db.increment_ia_message_count(lead["id"])
+
+                        # Log da ação
+                        db.add_lead_log(lead["id"], "ia_resposta", "IA Assistant", resposta_ia[:100])
+
+                        # Notificar via Socket.io
+                        socketio.emit("new_message", {
+                            "lead_id": lead["id"],
+                            "phone": phone,
+                            "name": "Assistente Virtual",
+                            "content": resposta_ia,
+                            "timestamp": datetime.now().isoformat(),
+                            "sender_type": "ia"
+                        }, room="gestores")
+
+                        print(f"🤖 IA respondeu ao lead {lead['id']}")
+            except Exception as e_ia:
+                print(f"⚠️ Erro na IA (não bloqueante): {e_ia}")
+
         # 🔹 Emite atualização em tempo real
         socketio.emit("new_message", {
             "lead_id": lead["id"],
@@ -1197,6 +1240,94 @@ def disable_gestor_whatsapp():
     return jsonify({
         "success": True,
         "message": "Notificações desativadas"
+    })
+
+# =======================
+# 🤖 IA ASSISTANT - ENDPOINTS
+# =======================
+
+@app.route("/api/ia/status", methods=["GET"])
+@login_required
+@handle_errors
+def get_ia_status():
+    """Retorna status e configuração da IA"""
+    if not ia_assistant:
+        return jsonify({
+            "habilitada": False,
+            "motivo": "IA não inicializada"
+        })
+
+    stats = ia_assistant.get_estatisticas()
+    db_stats = db.get_estatisticas_ia()
+
+    return jsonify({
+        "habilitada": True,
+        "configuracao": stats,
+        "estatisticas": db_stats
+    })
+
+
+@app.route("/api/ia/leads-qualificados", methods=["GET"])
+@rate_limit('per_minute')
+@role_required("admin", "gestor")
+@handle_errors
+def get_leads_qualificados_ia():
+    """Retorna leads qualificados pela IA (prontos para atribuição)"""
+    leads = db.get_leads_qualificados_ia()
+
+    # Adicionar respostas de qualificação para cada lead
+    for lead in leads:
+        lead['qualificacao'] = db.get_lead_qualificacao_respostas(lead['id'])
+
+    return jsonify(leads)
+
+
+@app.route("/api/leads/<int:lead_id>/qualificacao", methods=["GET"])
+@rate_limit('per_minute')
+@login_required
+@handle_errors
+def get_lead_qualificacao(lead_id):
+    """Retorna respostas de qualificação de um lead específico"""
+    respostas = db.get_lead_qualificacao_respostas(lead_id)
+
+    return jsonify({
+        "lead_id": lead_id,
+        "respostas": respostas,
+        "total": len(respostas)
+    })
+
+
+@app.route("/api/ia/forcar-escalacao/<int:lead_id>", methods=["POST"])
+@rate_limit('per_minute')
+@role_required("admin", "gestor")
+@handle_errors
+def forcar_escalacao_humano(lead_id):
+    """Força escalação de lead para atendimento humano"""
+    lead = db.get_lead(lead_id)
+    if not lead:
+        return jsonify({"error": "Lead não encontrado"}), 404
+
+    # Marcar como escalado
+    db.marcar_lead_escalado_humano(lead_id)
+    db.update_lead_status(lead_id, "novo")
+    db.add_lead_log(
+        lead_id,
+        "ia_escalado_manual",
+        session.get("name", "Sistema"),
+        "Escalado manualmente por gestor"
+    )
+
+    audit_logger.log_action(
+        session["user_id"],
+        "ia_escalacao_manual",
+        "lead",
+        lead_id,
+        "Lead escalado manualmente"
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Lead escalado para atendimento humano"
     })
 
 # =======================

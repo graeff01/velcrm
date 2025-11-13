@@ -1,0 +1,73 @@
+{
+  "ia_habilitada": true,
+  "modelo": "gpt-4o-mini",
+  "max_mensagens_ia": 20,
+  "timeout_qualificacao_minutos": 30,
+
+  "saudacao": "Olá! 👋 Sou a assistente virtual da {empresa}.\n\nFicarei feliz em ajudar você! Para te atender melhor, vou fazer algumas perguntas rápidas. Tudo bem?",
+
+  "empresa": "MinhaEmpresa",
+
+  "perguntas_qualificacao": [
+    {
+      "id": "nome",
+      "pergunta": "Qual seu nome completo?",
+      "campo_lead": "name",
+      "obrigatoria": true,
+      "tipo": "texto"
+    },
+    {
+      "id": "interesse",
+      "pergunta": "Qual produto ou serviço te interessa?",
+      "campo_lead": "interesse",
+      "obrigatoria": true,
+      "tipo": "texto"
+    },
+    {
+      "id": "orcamento",
+      "pergunta": "Qual seu orçamento aproximado? (Pode ser uma faixa de valores)",
+      "campo_lead": "orcamento",
+      "obrigatoria": false,
+      "tipo": "texto"
+    },
+    {
+      "id": "prazo",
+      "pergunta": "Para quando você precisa?",
+      "campo_lead": "prazo",
+      "obrigatoria": false,
+      "tipo": "texto"
+    },
+    {
+      "id": "contato",
+      "pergunta": "Como prefere ser contatado? (WhatsApp, Email, Telefone)",
+      "campo_lead": "preferencia_contato",
+      "obrigatoria": false,
+      "tipo": "texto"
+    }
+  ],
+
+  "mensagem_qualificado": "Perfeito, {nome}! ✅\n\n📋 Resumo das suas informações:\n{resumo}\n\nVou conectar você com um de nossos especialistas agora! Ele já tem todas essas informações e vai te atender em breve. 👨‍💼",
+
+  "keywords_humano": [
+    "falar com humano",
+    "atendente",
+    "vendedor",
+    "gerente",
+    "pessoa",
+    "alguém real",
+    "não quero robô",
+    "quero falar com alguém"
+  ],
+
+  "mensagem_escalar": "Entendido! Vou te conectar com um atendente humano agora. Por favor, aguarde um momento. 👨‍💼",
+
+  "prompt_sistema": "Você é um assistente virtual de atendimento profissional e amigável.\n\nSuas responsabilidades:\n1. Fazer perguntas de qualificação de forma natural e conversacional\n2. Ser educado, prestativo e usar emojis moderadamente\n3. Adaptar suas perguntas baseado nas respostas anteriores\n4. Não inventar informações sobre produtos ou preços\n5. Se não souber algo, escalar para um humano\n\nTom de voz: Profissional mas amigável, como um consultor experiente.\n\nImportante:\n- Faça UMA pergunta por vez\n- Seja breve (máximo 3 linhas)\n- Use linguagem simples\n- Agradeça cada resposta antes da próxima pergunta",
+
+  "max_tokens": 150,
+  "temperature": 0.7,
+
+  "fallback_sem_api": {
+    "habilitado": true,
+    "mensagem": "Obrigado pela mensagem! Um de nossos atendentes irá responder em breve. 😊"
+  }
+}
