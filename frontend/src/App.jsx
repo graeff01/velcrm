@@ -3,14 +3,16 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import api from './api';
 import './styles.css';
-
+import { PermissionsProvider } from './contexts/PermissionsContext';
+import './styles/components/chat.css';
+import './styles/components/LeadCard.css';
+import './styles/components/Metrics.css';
 
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Verificar se já está logado
   useEffect(() => {
     checkAuth();
   }, []);
@@ -55,14 +57,16 @@ function App() {
   }
 
   return (
-    <>
-      {user ? (
-        <Dashboard user={user} onLogout={handleLogout} />
-      ) : (
+  <PermissionsProvider currentUser={user}>
+    <div className="App">
+      {!user ? (
         <Login onLogin={handleLogin} />
+      ) : (
+        <Dashboard user={user} onLogout={handleLogout} />
       )}
-    </>
-  );
+    </div>
+  </PermissionsProvider>
+);
 }
 
 export default App;

@@ -1,0 +1,426 @@
+/* ============================================
+   👥 GESTÃO DE USUÁRIOS - DESIGN PREMIUM
+   ============================================ */
+
+/* Container Principal */
+.user-management {
+  width: 100%;
+  min-height: 100vh;
+  padding: 32px 40px;
+  background: #0d1418;
+  color: #fff;
+}
+
+/* Header */
+.user-management-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.user-management-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #e9edef;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-management-header h1::before {
+  content: '👥';
+  font-size: 36px;
+}
+
+/* Botão Novo Usuário */
+.btn-new-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #00a884 0%, #00c89d 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(0, 168, 132, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-new-user:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 168, 132, 0.5);
+  background: linear-gradient(135deg, #00c89d 0%, #02e0b0 100%);
+}
+
+.btn-new-user::before {
+  content: '+';
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* Tabela de Usuários */
+.users-table-container {
+  width: 100%;
+  background: linear-gradient(135deg, #1a1f26 0%, #141920 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.users-table-header {
+  display: grid;
+  grid-template-columns: 200px 180px 150px 120px 200px;
+  gap: 20px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #1f2c33 0%, #1a242c 100%);
+  border-bottom: 2px solid rgba(0, 168, 132, 0.3);
+  font-weight: 700;
+  font-size: 13px;
+  color: #8696a0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.users-table-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #0f1419;
+}
+
+/* User Row */
+.user-row {
+  display: grid;
+  grid-template-columns: 200px 180px 150px 120px 200px;
+  gap: 20px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #1a1f26 0%, #151a20 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+.user-row:hover {
+  background: linear-gradient(135deg, #1f2730 0%, #1a2128 100%);
+  transform: translateX(4px);
+  box-shadow: 0 4px 16px rgba(0, 168, 132, 0.15);
+}
+
+.user-row:last-child {
+  border-bottom: none;
+}
+
+/* Colunas */
+.user-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e9edef;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-name::before {
+  content: '👤';
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #00a884 0%, #00c89d 100%);
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 168, 132, 0.3);
+}
+
+.user-username {
+  font-size: 14px;
+  color: #8696a0;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+
+/* Role Badge */
+.user-role {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: fit-content;
+}
+
+.user-role.role-admin {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.user-role.role-gestor {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.user-role.role-vendedor {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+/* Status Toggle */
+.user-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-toggle {
+  width: 52px;
+  height: 28px;
+  background: #374045;
+  border-radius: 14px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.status-toggle.active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.status-toggle::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.status-toggle.active::after {
+  left: 26px;
+}
+
+/* Ícones de Status */
+.status-icon {
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-icon.active {
+  color: #10b981;
+}
+
+.status-icon.inactive {
+  color: #ef4444;
+}
+
+/* Actions */
+.user-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 18px;
+}
+
+.btn-edit {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.btn-edit:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+}
+
+.btn-delete {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-delete:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5);
+}
+
+/* Empty State */
+.users-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  gap: 20px;
+}
+
+.users-empty-state::before {
+  content: '👥';
+  font-size: 80px;
+  opacity: 0.3;
+}
+
+.users-empty-state p {
+  font-size: 18px;
+  color: #8696a0;
+  font-weight: 600;
+}
+
+/* Loading State */
+.users-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  gap: 20px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(0, 168, 132, 0.2);
+  border-top-color: #00a884;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.users-loading p {
+  font-size: 16px;
+  color: #8696a0;
+  font-weight: 600;
+}
+
+/* Responsivo */
+@media (max-width: 1200px) {
+  .users-table-header,
+  .user-row {
+    grid-template-columns: 180px 150px 130px 100px 180px;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .user-management {
+    padding: 24px 32px;
+  }
+
+  .user-management-header h1 {
+    font-size: 28px;
+  }
+
+  .users-table-header,
+  .user-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .users-table-header {
+    display: none;
+  }
+
+  .user-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 20px;
+    gap: 12px;
+  }
+
+  .user-name,
+  .user-username,
+  .user-role,
+  .user-status,
+  .user-actions {
+    justify-content: flex-start;
+  }
+
+  .user-actions {
+    justify-content: center;
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .user-management {
+    padding: 20px 16px;
+  }
+
+  .user-management-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .user-management-header h1 {
+    font-size: 24px;
+  }
+
+  .btn-new-user {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Animações de Entrada */
+.user-row {
+  animation: slideInUp 0.4s ease backwards;
+}
+
+.user-row:nth-child(1) { animation-delay: 0.05s; }
+.user-row:nth-child(2) { animation-delay: 0.1s; }
+.user-row:nth-child(3) { animation-delay: 0.15s; }
+.user-row:nth-child(4) { animation-delay: 0.2s; }
+.user-row:nth-child(5) { animation-delay: 0.25s; }
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

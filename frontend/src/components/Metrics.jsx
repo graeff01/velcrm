@@ -11,8 +11,12 @@ import "../styles/components/metrics.css";
 import api from '../api';
 import '../styles/components/AlertsPanel.css';
 import AlertsPanel from './AlertsPanel';
+import ExportButtons from './ExportButtons';
+import { usePermissions } from '../contexts/PermissionsContext';
 
 export default function Metrics({ currentUser }) {
+  const { canViewFullMetrics, isVendedor, currentUser: user } = usePermissions();
+  
   const [period, setPeriod] = useState('month');
   const [vendedorId, setVendedorId] = useState('');
   const [vendedores, setVendedores] = useState([]);
@@ -36,16 +40,26 @@ export default function Metrics({ currentUser }) {
   }, [currentUser]);
 
   const fetchMetrics = async () => {
-    setLoading(true);
-    try {
-      const response = await api.getMetrics(period, vendedorId || null);
-      setData(response);
-    } catch (err) {
-      console.error('Erro ao carregar métricas', err);
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    // 🔐 Se for vendedor, forçar filtro pelo próprio ID
+    const targetVendedorId = isVendedor() 
+      ? currentUser.id 
+      : (vendedorId || null);
+    
+    const response = await api.getMetrics(period, targetVendedorId);
+    setData(response);
+    
+    // Feedback no console
+    if (isVendedor()) {
+      console.log('📊 Vendedor: Exibindo apenas suas próprias métricas');
     }
-  };
+  } catch (err) {
+    console.error('Erro ao carregar métricas', err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     if (data && !data.insights) {
@@ -147,6 +161,30 @@ export default function Metrics({ currentUser }) {
   return (
     <section className="metrics-page">
       <div className="metrics-container">
+           {/* 🔐 Indicador de Filtro por Perfil */}
+      {isVendedor() && (
+        <div style={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          padding: '12px 20px',
+          borderRadius: '10px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)'
+        }}>
+          <span style={{ fontSize: '20px' }}>📊</span>
+          <div>
+            <strong style={{ display: 'block', marginBottom: '2px', color: '#fff' }}>
+              Métricas Pessoais
+            </strong>
+            <span style={{ fontSize: '13px', opacity: 0.9, color: '#fff' }}>
+              Você está vendo apenas seu desempenho individual
+            </span>
+          </div>
+        </div>
+      )}
+      
         {/* Cabeçalho */}
         <header className="metrics-header">
           <h2>📊 Painel de Desempenho</h2>
@@ -163,6 +201,13 @@ export default function Metrics({ currentUser }) {
               ))}
             </select>
           </div>
+
+          {/* Filtros */}
+          <div className="metrics-filters-premium">
+            {/* ... filtros existentes ... */}
+          </div>
+
+
 
           {(currentUser?.role === 'admin' || currentUser?.role === 'gestor') && (
             <div className="filter-group">
@@ -466,6 +511,31 @@ export default function Metrics({ currentUser }) {
               )}
             </div>
           </div>
+          {/* ============================
+    EXPORTAÇÃO DE DADOS - SEÇÃO
+   ============================ */}
+<div className="export-section-container">
+
+  <h3 className="export-section-title">
+    📤 Exportar Dados
+  </h3>
+
+  <div className="export-section-bar">
+    <button className="export-btn pdf" onClick={() => api.exportPDF(period, vendedorId)}>
+      <i className="ri-file-pdf-line"></i> PDF
+    </button>
+
+    <button className="export-btn excel" onClick={() => api.exportExcel(period, vendedorId)}>
+      <i className="ri-file-excel-line"></i> Excel
+    </button>
+
+    <button className="export-btn csv" onClick={() => api.exportCSV(period, vendedorId)}>
+      <i className="ri-file-text-line"></i> CSV
+    </button>
+  </div>
+
+</div>
+
         </div>
       </div>
     </section>

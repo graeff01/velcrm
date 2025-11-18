@@ -1,6 +1,6 @@
 """
-Providers de IA para qualificação
-Suporta múltiplos LLMs
+Providers de IA para qualificacao
+Suporta multiplos LLMs
 """
 from .base_provider import BaseAIProvider
 from .openai_provider import OpenAIProvider

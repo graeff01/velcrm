@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Key } from 'lucide-react';
+import { Plus, Edit, Trash2 } from 'lucide-react';
 import api from '../api';
+import '../styles/components/UserManagement.css';
+import { toast } from './Toast';
 
 export default function UserManagement({ currentUser }) {
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -18,142 +23,209 @@ export default function UserManagement({ currentUser }) {
   }, []);
 
   const loadUsers = async () => {
-    const data = await api.getUsers();
-    setUsers(data);
+    try {
+      setLoading(true);
+      const data = await api.getUsers({ noCache: true });
+      setUsers(data);
+    } catch (error) {
+      console.error('Erro ao carregar usuários:', error);
+      toast.error("❌ Erro ao carregar usuários");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return;
+
+    setSaving(true);
     try {
       if (editingUser) {
         await api.updateUser(editingUser.id, formData);
+        toast.success("Usuário atualizado!");
       } else {
-        await api.createUser(formData);
+        const res = await api.createUser(formData);
+        if (res?.success) {
+          toast.success("Usuário criado com sucesso!");
+        } else {
+          toast.error("Erro ao criar usuário");
+        }
       }
+
       setShowModal(false);
       setEditingUser(null);
       setFormData({ username: '', password: '', name: '', role: 'vendedor' });
-      loadUsers();
+
+      setTimeout(() => loadUsers(), 300);
+
     } catch (error) {
-      alert('Erro ao salvar usuário');
+      console.log(error);
+      toast.error("Erro ao salvar usuário");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleEdit = (user) => {
     setEditingUser(user);
-    setFormData({ name: user.name, role: user.role, username: user.username });
+    setFormData({
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      password: ''
+    });
     setShowModal(true);
   };
 
   const handleDelete = async (userId) => {
-    if (confirm('Desativar este usuário?')) {
+    if (!window.confirm("Desativar este usuário?")) return;
+
+    try {
       await api.deleteUser(userId);
+      toast.success("Usuário desativado");
       loadUsers();
+    } catch {
+      toast.error("Erro ao desativar usuário");
     }
   };
 
+  const getRoleBadgeClass = (role) => ({
+    admin: "role-admin",
+    gestor: "role-gestor",
+    vendedor: "role-vendedor"
+  }[role] || "role-vendedor");
+
+  const getRoleLabel = (role) => ({
+    admin: "ADMIN",
+    gestor: "GESTOR",
+    vendedor: "VENDEDOR"
+  }[role] || role.toUpperCase());
+
   return (
-    <div style={{ padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h2 style={{ color: '#e9edef' }}>Gestão de Usuários</h2>
+    <div className="user-management">
+
+      {/* HEADER */}
+      <div className="user-management-header">
+        <h1>Gestão de Usuários</h1>
+
         {currentUser.role === 'admin' && (
-          <button className="btn btn-primary" onClick={() => { setShowModal(true); setEditingUser(null); }}>
-            <Plus size={18} /> Novo Usuário
+          <button 
+            className="btn-new-user" 
+            onClick={() => {
+              setShowModal(true);
+              setEditingUser(null);
+              setFormData({ username: '', password: '', name: '', role: 'vendedor' });
+            }}
+          >
+            <Plus size={18}/> Novo Usuário
           </button>
         )}
       </div>
 
-      <div style={{ background: '#202c33', borderRadius: '10px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#2a3942' }}>
-            <tr>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Nome</th>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Usuário</th>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Perfil</th>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Status</th>
-              {currentUser.role === 'admin' && <th style={{ padding: '15px', textAlign: 'center' }}>Ações</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(user => (
-              <tr key={user.id} style={{ borderBottom: '1px solid #2a3942' }}>
-                <td style={{ padding: '15px' }}>{user.name}</td>
-                <td style={{ padding: '15px', color: '#8696a0' }}>{user.username}</td>
-                <td style={{ padding: '15px' }}>
-                  <span className="role-badge">{user.role}</span>
-                </td>
-                <td style={{ padding: '15px' }}>
-                  {user.active ? '✅ Ativo' : '❌ Inativo'}
-                </td>
-                {currentUser.role === 'admin' && (
-                  <td style={{ padding: '15px', textAlign: 'center' }}>
-                    <button className="btn btn-secondary" style={{ marginRight: '5px', padding: '5px 10px' }} onClick={() => handleEdit(user)}>
-                      <Edit size={16} />
-                    </button>
-                    <button className="btn btn-danger" style={{ padding: '5px 10px' }} onClick={() => handleDelete(user.id)}>
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* LOADING */}
+      {loading && (
+        <div className="users-loading">
+          <div className="spinner"></div>
+          <p>Carregando usuários...</p>
+        </div>
+      )}
 
+      {/* EMPTY */}
+      {!loading && users.length === 0 && (
+        <p className="users-empty-state">Nenhum usuário cadastrado</p>
+      )}
+
+      {/* TABELA */}
+      {!loading && users.length > 0 && (
+        <div className="users-table-container">
+
+          <div className="users-table-header">
+            <div>Nome</div>
+            <div>Usuário</div>
+            <div>Função</div>
+            <div>Status</div>
+            <div>Ações</div>
+          </div>
+
+          <div className="users-table-body">
+            {users.map(user => (
+              <div key={user.id} className="user-row">
+
+                <div className="user-name">{user.name}</div>
+
+                <div className="user-username">{user.username}</div>
+
+                <div className={`user-role ${getRoleBadgeClass(user.role)}`}>
+                  {getRoleLabel(user.role)}
+                </div>
+
+                <div className="user-status">
+                  {user.active ? "✅" : "❌"}
+                </div>
+
+                {currentUser.role === 'admin' && (
+                  <div className="user-actions">
+                    <button className="btn-action btn-edit" onClick={() => handleEdit(user)}>
+                      <Edit size={18}/>
+                    </button>
+                    <button className="btn-action btn-delete" onClick={() => handleDelete(user.id)}>
+                      <Trash2 size={18}/>
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            ))}
+          </div>
+
+        </div>
+      )}
+
+      {/* MODAL */}
       {showModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: '#202c33',
-            padding: '30px',
-            borderRadius: '15px',
-            width: '500px',
-            maxWidth: '90%'
-          }}>
-            <h3 style={{ marginBottom: '20px' }}>{editingUser ? 'Editar' : 'Novo'} Usuário</h3>
-            <form onSubmit={handleSubmit}>
+        <div className="modal-backdrop" onClick={() => !saving && setShowModal(false)}>
+          <div className="modal user-modal" onClick={(e) => e.stopPropagation()}>
+
+            <div className="modal-header">
+              <h3>{editingUser ? "Editar Usuário" : "Novo Usuário"}</h3>
+              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="modal-form">
+
               <div className="form-group">
                 <label>Nome Completo</label>
-                <input
-                  type="text"
+                <input 
+                  required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
                 />
               </div>
+
               {!editingUser && (
                 <>
                   <div className="form-group">
                     <label>Usuário (login)</label>
-                    <input
-                      type="text"
+                    <input 
+                      required
                       value={formData.username}
                       onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      required
                     />
                   </div>
+
                   <div className="form-group">
                     <label>Senha</label>
-                    <input
+                    <input 
                       type="password"
+                      required
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
                     />
                   </div>
                 </>
               )}
+
               <div className="form-group">
                 <label>Perfil</label>
                 <select
@@ -165,18 +237,21 @@ export default function UserManagement({ currentUser }) {
                   <option value="admin">Admin</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                  Salvar
+
+              <div className="modal-actions">
+                <button disabled={saving} type="submit" className="btn btn-primary">
+                  {saving ? "Salvando..." : editingUser ? "Atualizar" : "Criar"}
                 </button>
-                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowModal(false)}>
+                <button disabled={saving} type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
                   Cancelar
                 </button>
               </div>
+
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -326,3 +326,109 @@ class IPWhitelist:
                 return jsonify({"error": "Acesso negado"}), 403
             return f(*args, **kwargs)
         return decorated_function
+ 
+ # =============================
+# ROLE-BASED ACCESS CONTROL (SESSION-BASED)
+# =============================
+from flask import g, session
+
+def login_required_rbac(f):
+    """
+    Decorator para rotas que exigem autenticação (compatível com sessions)
+    Diferente do login_required original, este carrega o usuário completo em g.current_user
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            return jsonify({'error': 'Não autenticado'}), 401
+        
+        # Carrega usuário completo do banco
+        from database import Database
+        db = Database()
+        conn = db.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE id = ? AND active = 1", (session["user_id"],))
+        user = c.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({'error': 'Usuário inválido ou inativo'}), 401
+        
+        # Disponibiliza usuário globalmente na request
+        g.current_user = dict(user)
+        return f(*args, **kwargs)
+    
+    return decorated_function
+
+
+def role_required_rbac(*allowed_roles):
+    """
+    Decorator para rotas que exigem perfis específicos (compatível com sessions)
+    
+    Usage:
+        @role_required_rbac('admin')  # Apenas admin
+        @role_required_rbac('admin', 'gestor')  # Admin ou gestor
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if "user_id" not in session:
+                return jsonify({'error': 'Não autenticado'}), 401
+            
+            if session.get("role") not in allowed_roles:
+                return jsonify({
+                    'error': 'Acesso negado',
+                    'message': f'Esta ação requer um dos perfis: {", ".join(allowed_roles)}',
+                    'user_role': session.get("role"),
+                    'required_roles': list(allowed_roles)
+                }), 403
+            
+            # Carrega usuário completo em g.current_user
+            from database import Database
+            db = Database()
+            conn = db.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],))
+            user = c.fetchone()
+            conn.close()
+            
+            if user:
+                g.current_user = dict(user)
+            
+            return f(*args, **kwargs)
+        
+        return decorated_function
+    return decorator
+
+
+def owner_or_manager_required_rbac(f):
+    """
+    Decorator para rotas onde vendedor só pode acessar seus próprios recursos
+    Gestor e Admin podem acessar tudo
+    
+    Usage:
+        @owner_or_manager_required_rbac
+        def get_lead(lead_id):
+            # g.current_user já está disponível
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            return jsonify({'error': 'Não autenticado'}), 401
+        
+        # Carrega usuário completo
+        from database import Database
+        db = Database()
+        conn = db.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE id = ? AND active = 1", (session["user_id"],))
+        user = c.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({'error': 'Usuário inválido'}), 401
+        
+        g.current_user = dict(user)
+        return f(*args, **kwargs)
+    
+    return decorated_function

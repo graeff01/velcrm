@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Users, Send, LogOut } from 'lucide-react';
+import { MessageCircle, Users, Send, LogOut, Bot } from 'lucide-react';
 import api from '../api';
 import io from 'socket.io-client';
 import UserManagement from './UserManagement';
@@ -10,6 +10,9 @@ import LeadTimeline from "./LeadTimeline";
 import NotificationsContainer from './NotificationsContainer';
 import '../styles/components/Kanban.css';
 import '../styles/components/chat.css';
+import ChatMessagesContainer from './ChatMessage';
+import GestorWhatsAppConfig from './GestorWhatsAppConfig';
+import IADashboard from './IADashboard';
 
 export default function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('meus-leads');
@@ -22,7 +25,7 @@ export default function Dashboard({ user, onLogout }) {
   const [fromKanbanLead, setFromKanbanLead] = useState(null);
   const [newLeadsCount, setNewLeadsCount] = useState(0);
   const [newMessagesCount, setNewMessagesCount] = useState(0);
-
+  const [isAITyping, setIsAITyping] = useState(false);
   const newLeadSound = useRef(null);
   const newMessageSound = useRef(null);
 
@@ -38,14 +41,25 @@ export default function Dashboard({ user, onLogout }) {
       }
     });
 
-    // 📩 Nova mensagem
     newSocket.on('new_message', (data) => {
+      console.log('📨 Nova mensagem recebida:', data);
+      
       if (selectedLead && data.lead_id === selectedLead.id) {
-        setMessages((prev) => [...prev, {
-          content: data.content,
-          sender_type: data.sender_type,
-          timestamp: data.timestamp,
-        }]);
+        setMessages((prev) => {
+          const exists = prev.some(m => 
+            m.content === data.content && 
+            m.timestamp === data.timestamp
+          );
+          
+          if (exists) return prev;
+          
+          return [...prev, {
+            content: data.content,
+            sender_type: data.sender_type,
+            sender_name: data.sender_name,
+            timestamp: data.timestamp,
+          }];
+        });
       } else {
         setNewMessagesCount((c) => c + 1);
         playSound(newMessageSound);
@@ -54,7 +68,6 @@ export default function Dashboard({ user, onLogout }) {
       refreshLeads();
     });
 
-    // 👤 Novo lead
     newSocket.on('lead_assigned', (data) => {
       setNewLeadsCount((c) => c + 1);
       playSound(newLeadSound);
@@ -89,13 +102,24 @@ export default function Dashboard({ user, onLogout }) {
       toast.error('❌ Erro ao atualizar leads');
     }
   };
-
+  
   const loadMessages = async (leadId) => {
+    console.log('🔄 Carregando mensagens do lead:', leadId);
     try {
       const data = await api.getMessages(leadId);
-      setMessages(data);
+      
+      const messagesList = Array.isArray(data) ? data : data?.items || [];
+      
+      const sortedMessages = messagesList.sort((a, b) => 
+        new Date(a.timestamp) - new Date(b.timestamp)
+      );
+      
+      setMessages(sortedMessages);
+      console.log('📨 Mensagens carregadas:', sortedMessages.length);
     } catch (error) {
+      console.error('❌ Erro ao carregar mensagens:', error);
       toast.error('❌ Erro ao carregar mensagens');
+      setMessages([]);
     }
   };
 
@@ -107,6 +131,7 @@ export default function Dashboard({ user, onLogout }) {
 
   // ================= AÇÕES =================
   const handleSelectLead = (lead) => {
+    console.log('🎯 Lead selecionado:', lead.id);
     setSelectedLead(lead);
     setNewMessagesCount(0);
     loadMessages(lead.id);
@@ -131,22 +156,30 @@ export default function Dashboard({ user, onLogout }) {
     e.preventDefault();
     if (!messageInput.trim() || !selectedLead) return;
 
+    const tempMessage = {
+      content: messageInput,
+      sender_type: 'vendedor',
+      sender_name: user.name,
+      timestamp: new Date().toISOString(),
+      temp: true
+    };
+
     try {
-      await api.sendMessage(selectedLead.id, messageInput);
-      setMessages((prev) => [...prev, {
-        content: messageInput,
-        sender_type: 'vendedor',
-        sender_name: user.name,
-        timestamp: new Date().toISOString(),
-      }]);
-      toast.success('✅ Mensagem enviada com sucesso!');
+      setMessages((prev) => [...prev, tempMessage]);
+      const messageText = messageInput;
       setMessageInput('');
-    } catch {
+
+      const response = await api.sendMessage(selectedLead.id, messageText);
+      
+      await loadMessages(selectedLead.id);
+      
+      toast.success('✅ Mensagem enviada com sucesso!');
+    } catch (error) {
+      setMessages((prev) => prev.filter(m => !m.temp));
+      setMessageInput(messageInput);
       toast.error('❌ Falha ao enviar mensagem');
     }
   };
-
-  
 
   // ================= KANBAN → CHAT =================
   useEffect(() => {
@@ -170,6 +203,9 @@ export default function Dashboard({ user, onLogout }) {
     if (!list.length) {
       return <div className="empty">Nenhum lead aqui ainda</div>;
     }
+    
+    const isAdminOrGestor = user.role === 'admin' || user.role === 'gestor';
+    
     return list.map((lead) => (
       <div
         key={lead.id}
@@ -180,11 +216,25 @@ export default function Dashboard({ user, onLogout }) {
           <span className="lead-name">{lead.name || lead.phone}</span>
           <span className="lead-time">{formatTime(lead.updated_at)}</span>
         </div>
+        
         <div className="lead-last-message">{lead.phone}</div>
+        
         <div className="lead-footer">
           <span className={`lead-status status-${lead.status}`}>
             {lead.status.replace('_', ' ')}
           </span>
+          
+          {isAdminOrGestor && lead.assigned_to && (
+            <div className="lead-vendedor-info-avatar">
+              <div className="vendedor-avatar-small">
+                {(lead.assigned_to_name || 'V').charAt(0).toUpperCase()}
+              </div>
+              <div className="vendedor-info-text">
+                <span className="vendedor-name-small">{lead.assigned_to_name || 'Vendedor'}</span>
+              </div>
+            </div>
+          )}
+          
           {showAssignButton && (
             <button
               className="btn btn-primary"
@@ -193,7 +243,7 @@ export default function Dashboard({ user, onLogout }) {
                 handleAssignLead(lead.id);
               }}
             >
-              Pegar Lead
+              ⚡ Pegar Lead
             </button>
           )}
         </div>
@@ -204,15 +254,14 @@ export default function Dashboard({ user, onLogout }) {
   // ================= LAYOUT =================
   return (
     <div className="app-container">
-      {/* ==== ÁUDIO ==== */}
       <audio ref={newLeadSound} src="/sounds/new_lead.mp3" preload="auto" />
       <audio ref={newMessageSound} src="/sounds/new_message.mp3" preload="auto" />
 
       {/* ==== MODO GERENCIAL ==== */}
-      {['kanban', 'metricas', 'config'].includes(activeTab) ? (
+      {['kanban', 'metricas', 'config', 'notificacoes', 'ia'].includes(activeTab) ? (
         <div className="dashboard-layout">
           
-          {/* ==== SIDEBAR FIXA ==== */}
+          {/* ==== SIDEBAR ==== */}
           <aside className="sidebar">
             <div className="sidebar-header">
               <div className="sidebar-brand">
@@ -223,7 +272,6 @@ export default function Dashboard({ user, onLogout }) {
                 <span className="sidebar-badge">{user.role.toUpperCase()}</span>
               </div>
 
-              {/* 🔔 COMPONENTE DE NOTIFICAÇÕES */}
               <div style={{ padding: '10px 15px', borderBottom: '1px solid #e2e8f0' }}>
                 <NotificationsContainer />
               </div>
@@ -250,11 +298,26 @@ export default function Dashboard({ user, onLogout }) {
                     >
                       📊 Métricas
                     </button>
+                    
+                    {/* ✨ BOTÃO IA ASSISTANT */}
+                    <button
+                      className={`sidebar-item ${activeTab === 'ia' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('ia')}
+                    >
+                      <Bot size={18} /> IA Assistant
+                    </button>
+                    
                     <button
                       className={`sidebar-item ${activeTab === 'config' ? 'active' : ''}`}
                       onClick={() => setActiveTab('config')}
                     >
-                      ⚙️ Config
+                      ⚙️ Configurações
+                    </button>
+                    <button
+                      className={`sidebar-item ${activeTab === 'notificacoes' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('notificacoes')}
+                    >
+                      📱 Notificações WhatsApp
                     </button>
                   </>
                 )}
@@ -275,11 +338,15 @@ export default function Dashboard({ user, onLogout }) {
             )}
             {activeTab === 'metricas' && <Metrics currentUser={user} />}
             {activeTab === 'config' && <UserManagement currentUser={user} />}
+            {activeTab === 'notificacoes' && <GestorWhatsAppConfig />}
+            
+            {/* ✨ RENDERIZAR IA DASHBOARD */}
+            {activeTab === 'ia' && <IADashboard currentUser={user} />}
           </main>
 
         </div>
       ) : (
-
+        
         /* ==== MODO DE ATENDIMENTO ==== */
         <>
           <div className="sidebar">
@@ -292,7 +359,6 @@ export default function Dashboard({ user, onLogout }) {
                 <span className="sidebar-badge">{user.role.toUpperCase()}</span>
               </div>
 
-              {/* 🔔 COMPONENTE DE NOTIFICAÇÕES */}
               <div style={{ padding: '10px 15px', borderBottom: '1px solid #e2e8f0' }}>
                 <NotificationsContainer />
               </div>
@@ -312,11 +378,26 @@ export default function Dashboard({ user, onLogout }) {
                     >
                       📊 Métricas
                     </button>
+                    
+                    {/* ✨ BOTÃO IA ASSISTANT */}
+                    <button
+                      className={`sidebar-item ${activeTab === 'ia' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('ia')}
+                    >
+                      <Bot size={18} /> IA Assistant
+                    </button>
+                    
                     <button
                       className={`sidebar-item ${activeTab === 'config' ? 'active' : ''}`}
                       onClick={() => setActiveTab('config')}
                     >
                       ⚙️ Configurações
+                    </button>
+                    <button
+                      className={`sidebar-item ${activeTab === 'notificacoes' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('notificacoes')}
+                    >
+                      📱 Notificações WhatsApp
                     </button>
                   </>
                 )}
@@ -328,7 +409,7 @@ export default function Dashboard({ user, onLogout }) {
                 </button>
               </nav>
             </div>
-
+            
             <div className="sidebar-tabs">
               <button
                 className={`tab ${activeTab === 'meus-leads' ? 'active' : ''}`}
@@ -337,7 +418,8 @@ export default function Dashboard({ user, onLogout }) {
                   setNewMessagesCount(0);
                 }}
               >
-                <MessageCircle size={18} /> Meus Leads
+                <MessageCircle size={18} /> 
+                {user.role === 'admin' || user.role === 'gestor' ? 'Todos os Leads' : 'Meus Leads'}
                 {newMessagesCount > 0 && (
                   <span className="badge">{newMessagesCount}</span>
                 )}
@@ -355,13 +437,17 @@ export default function Dashboard({ user, onLogout }) {
               </button>
             </div>
 
-            {/* ===== LISTA DE LEADS ===== */}
             <div className="leads-list">
               {activeTab === 'meus-leads' && (
                 <>
                   <div className="leads-header">
-                    <h3>📞 Meus Leads</h3>
-                    <span>{leads.length} ativos</span>
+                    <h3>
+                      {user.role === 'admin' || user.role === 'gestor' 
+                        ? '📊 Todos os Leads' 
+                        : '📞 Meus Leads'
+                      }
+                    </h3>
+                    <span>{leads.length} {user.role === 'admin' || user.role === 'gestor' ? 'totais' : 'ativos'}</span>
                   </div>
                   {renderLeadsList(leads)}
                 </>
@@ -388,36 +474,56 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
 
                 <div className="chat-messages">
-                  {messages && Array.isArray(messages) ? (
-                    messages.map((msg, i) => (
-                      <div key={i} className={`message from-${msg.sender_type}`}>
-                        <div className="message-bubble">
-                          {msg.sender_type === 'vendedor' && (
-                            <div className="message-sender">{msg.sender_name || 'Você'}</div>
+                  {messages && (Array.isArray(messages) ? messages : messages?.items || []).length > 0 ? (
+                    (Array.isArray(messages) ? messages : messages.items).map((msg, i) => (
+                      <div key={i} className={`message from-${msg.sender_type || 'lead'}`}>
+                        <div className="message-avatar">
+                          {msg.sender_type === 'ia' ? (
+                            <span>✨</span>
+                          ) : msg.sender_type === 'vendedor' ? (
+                            <span>👨‍💼</span>
+                          ) : (
+                            <span>👤</span>
                           )}
-                          <div className="message-content">{msg.content}</div>
-                          <div className="message-time">{formatTime(msg.timestamp)}</div>
                         </div>
-                      </div>
-                    ))
-                  ) : messages?.items ? (
-                    messages.items.map((msg, i) => (
-                      <div key={i} className={`message from-${msg.sender_type}`}>
+
                         <div className="message-bubble">
-                          {msg.sender_type === 'vendedor' && (
-                            <div className="message-sender">{msg.sender_name || 'Você'}</div>
+                          {msg.sender_type !== 'lead' && (
+                            <div className="message-sender">
+                              {msg.sender_type === 'ia' 
+                                ? 'Assistente IA' 
+                                : msg.sender_name || 'Você'
+                              }
+                            </div>
                           )}
+                          
                           <div className="message-content">{msg.content}</div>
                           <div className="message-time">{formatTime(msg.timestamp)}</div>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="no-messages">Nenhuma mensagem ainda</div>
+                    <div className="no-messages">
+                      <span style={{ fontSize: '48px', opacity: 0.3 }}>💬</span>
+                      <p style={{ marginTop: '12px', color: '#8696a0' }}>Nenhuma mensagem ainda</p>
+                    </div>
+                  )}
+
+                  {isAITyping && (
+                    <div className="typing-indicator">
+                      <div className="message-avatar">
+                        <span>✨</span>
+                      </div>
+                      <div className="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span className="typing-text">IA digitando...</span>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {/* ===== TIMELINE DO LEAD ===== */}
                 <div className="lead-timeline-wrapper">
                   <h4 style={{ margin: "15px 0 5px 10px", color: "#555" }}>Histórico do Lead</h4>
                   <LeadTimeline leadId={selectedLead?.id} />
@@ -448,4 +554,3 @@ export default function Dashboard({ user, onLogout }) {
     </div>
   );
 }
-

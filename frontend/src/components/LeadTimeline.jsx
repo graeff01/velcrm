@@ -3,7 +3,6 @@ import api from "../api";
 import { FileText, PlusCircle, Loader2 } from "lucide-react";
 import "../styles/components/timeline.css";
 
-
 export default function LeadTimeline({ leadId }) {
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState("");
@@ -91,7 +90,7 @@ export default function LeadTimeline({ leadId }) {
               </div>
               <div className="note-content">
                 <div className="note-header">
-                  <strong>{log.user || "Usuário"}</strong>
+                  <strong>{log.user_name || "Usuário"}</strong>
                   <span>
                     {new Date(log.timestamp).toLocaleString("pt-BR", {
                       day: "2-digit",

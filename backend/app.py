@@ -1,9 +1,10 @@
-from flask import Flask, request, jsonify, session
-from flask_socketio import SocketIO, join_room, leave_room
+from flask import Flask, request, jsonify, session, send_file
+from flask_socketio import SocketIO
 from flask_cors import CORS
 from notification_service import NotificationService
 from database import Database
 from whatsapp_service import WhatsAppService
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from middlewares import (
     rate_limit, validate_request, handle_errors,
     InputValidator, add_security_headers, AuditLogger
@@ -19,10 +20,11 @@ from advanced_cache import cached, invalidate_cache, get_cache_stats
 from alert_system import AlertSystem
 from alert_monitoring_service import AlertMonitoringService, check_alerts_once
 from gestor_whatsapp_notifier import GestorWhatsAppNotifier
-import os
-from dotenv import load_dotenv
-from routes.ai_webhook import register_ai_routes
+from export_service_premium import ExportServicePremium
 
+import os
+import io
+from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -31,18 +33,22 @@ load_dotenv()
 # CONFIGURAÇÃO PRINCIPAL
 # =======================
 app = Flask(__name__)
-register_ai_routes(app)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "fallback-insecure-key-change-immediately")
 app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH", 16 * 1024 * 1024))
-
-
-
 
 # CORS - Usar variável de ambiente para produção
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 CORS(app, supports_credentials=True, origins=cors_origins)
 
-socketio = SocketIO(app, cors_allowed_origins=cors_origins, async_mode="threading")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    ping_timeout=60,
+    ping_interval=25,
+    logger=False,
+    engineio_logger=False
+)
 
 # Inicializar serviço de notificações
 notification_service = NotificationService(socketio)
@@ -50,8 +56,9 @@ notification_service = NotificationService(socketio)
 # Inicialização dos serviços
 db = Database()
 extend_database_with_tags_sla(db)
-extend_database_with_ia(db)  # 🤖 Adicionar tabelas de IA
+extend_database_with_ia(db)
 whatsapp = WhatsAppService(db, socketio)
+export_service = ExportServicePremium(db)
 validator = InputValidator()
 audit_logger = AuditLogger(db)
 
@@ -59,7 +66,7 @@ audit_logger = AuditLogger(db)
 ia_assistant = None
 if os.getenv("IA_HABILITADA", "True") == "True":
     try:
-        ia_assistant = IAAssistant(db)
+        ia_assistant = IAAssistant(db, whatsapp)
         print("🤖 IA Assistant inicializado!")
     except Exception as e:
         print(f"⚠️ IA Assistant desabilitado: {e}")
@@ -77,7 +84,7 @@ alert_monitoring = AlertMonitoringService(
     socketio=socketio,
     notification_service=notification_service,
     whatsapp_service=whatsapp,
-    check_interval=300  # Verifica a cada 5 minutos
+    check_interval=300
 )
 
 # Iniciar monitoramento em background
@@ -130,10 +137,6 @@ if os.getenv('GOOGLE_SHEETS_ENABLED') == 'True':
             spreadsheet_id=os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID')
         )
         
-        # ⚠️ EXECUTAR APENAS UMA VEZ (primeira configuração)
-        # sheets_service.setup_spreadsheet()
-        
-        # Testar conexão
         if sheets_service.test_connection():
             print("✅ Google Sheets integrado com sucesso!")
             print(f"📊 Planilha: {sheets_service.get_spreadsheet_url()}")
@@ -242,9 +245,11 @@ def get_current_user():
 @app.route("/api/users", methods=["GET"])
 @rate_limit('per_minute')
 @role_required("admin", "gestor")
-@cached(ttl=60, key_prefix="users")  # ← ADICIONE ESTA LINHA
 def get_users():
+    
+    invalidate_cache("users")
     return jsonify(db.get_all_users())
+
 
 
 @app.route("/api/users", methods=["POST"])
@@ -299,26 +304,104 @@ def change_password(user_id):
 @app.route("/api/leads", methods=["GET"])
 @rate_limit('per_minute')
 @login_required
-@cached(ttl=30, key_prefix="leads")  # ← ADICIONE ESTA LINHA
+@cached(ttl=30, key_prefix="leads")
 def get_leads():
+    """Retorna leads com base no perfil do usuário"""
     role = session["role"]
     uid = session["user_id"]
-    leads = db.get_all_leads() if role in ["admin", "gestor"] else db.get_leads_by_vendedor(uid)
     
-    # Adiciona tags a cada lead
-    for lead in leads:
-        lead['tags'] = db.get_lead_tags(lead['id'])
-    
-    return jsonify(leads)
+    try:
+        conn = db.get_connection()
+        c = conn.cursor()
+        
+        if role in ["admin", "gestor"]:
+            # Admin/Gestor vê TODOS os leads com nome do vendedor
+            c.execute("""
+                SELECT 
+                    l.*,
+                    u.name as assigned_to_name,
+                    u.username as assigned_to_username
+                FROM leads l
+                LEFT JOIN users u ON l.assigned_to = u.id
+                ORDER BY l.updated_at DESC
+            """)
+        elif role == "vendedor":
+            # Vendedor vê APENAS seus leads
+            c.execute("""
+                SELECT 
+                    l.*,
+                    u.name as assigned_to_name,
+                    u.username as assigned_to_username
+                FROM leads l
+                LEFT JOIN users u ON l.assigned_to = u.id
+                WHERE l.assigned_to = ?
+                ORDER BY l.updated_at DESC
+            """, (uid,))
+        else:
+            conn.close()
+            return jsonify([])
+        
+        leads = [dict(row) for row in c.fetchall()]
+        conn.close()
+        
+        # Adicionar tags a cada lead
+        for lead in leads:
+            lead['tags'] = db.get_lead_tags(lead['id'])
+        
+        return jsonify(leads)
+        
+    except Exception as e:
+        print(f"❌ Erro ao buscar leads: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/leads/queue", methods=["GET"])
 @rate_limit('per_minute')
 @login_required
 def get_leads_queue():
-    leads = db.get_leads_by_status("novo")
-    return jsonify(leads)
-
+    """Retorna fila de leads novos (não atribuídos)"""
+    role = session["role"]
+    
+    try:
+        conn = db.get_connection()
+        c = conn.cursor()
+        
+        if role in ["admin", "gestor"]:
+            # ✅ QUERY CORRIGIDA: status novo E sem vendedor
+            c.execute("""
+                SELECT 
+                    l.*,
+                    u.name as assigned_to_name,
+                    u.username as assigned_to_username
+                FROM leads l
+                LEFT JOIN users u ON l.assigned_to = u.id
+                WHERE l.status = 'novo' 
+                  AND (l.assigned_to IS NULL OR l.assigned_to = 0)
+                ORDER BY l.created_at ASC
+            """)
+        else:
+            # Vendedor não vê fila
+            conn.close()
+            return jsonify([])
+        
+        leads = [dict(row) for row in c.fetchall()]
+        conn.close()
+        
+        # Adicionar tags
+        for lead in leads:
+            lead['tags'] = db.get_lead_tags(lead['id'])
+        
+        print(f"📋 Fila: {len(leads)} leads não atribuídos")  # ✅ Debug
+        
+        return jsonify(leads)
+        
+    except Exception as e:
+        print(f"❌ Erro ao buscar fila: {e}")
+        import traceback
+        traceback.print_exc()  # ✅ Print stack trace completo
+        return jsonify({"error": str(e)}), 500
+    
+       
 
 @app.route("/api/leads/<int:lead_id>", methods=["GET"])
 @rate_limit('per_minute')
@@ -345,15 +428,10 @@ def assign_lead(lead_id):
     db.add_lead_log(lead_id, "lead_atribuido", uname, f"Lead atribuído para {uname}")
     audit_logger.log_action(uid, "lead_assigned", "lead", lead_id, f"Lead atribuído")
 
-     # 🔔 Notificar atribuição
     lead = db.get_lead(lead_id)
     notification_service.notify_lead_assigned(lead, uname, uid, room='gestores')
     
-    
-    # 📊 Sincronizar com Google Sheets
     sync_lead_to_sheets(lead_id)
-
-    # 🗑️ Invalida cache (ADICIONE ESTA LINHA)
     invalidate_cache("leads")
     
     socketio.emit("lead_assigned", {"lead_id": lead_id, "vendedor_id": uid}, room="gestores")
@@ -370,31 +448,25 @@ def update_lead_status(lead_id):
     status = data["status"]
     uname = session["name"]
     
-    # 🔹 Pegar status antigo ANTES de atualizar
     lead_atual = db.get_lead(lead_id)
     old_status = lead_atual.get('status', 'novo') if lead_atual else 'novo'
     
-    # Atualizar status
     db.update_lead_status(lead_id, status)
     db.add_lead_log(lead_id, "status_alterado", uname, f"Status alterado para {status}")
     audit_logger.log_action(session["user_id"], "status_changed", "lead", lead_id, f"Status: {status}")
     
-    # 🔔 Notificar mudança de status
     lead_atualizado = db.get_lead(lead_id)
     if lead_atualizado:
         notification_service.notify_status_changed(lead_atualizado, old_status, status, room='gestores')
     
-    # 📊 Sincronizar com Google Sheets
     sync_lead_to_sheets(lead_id)
-    
-    # 📊 Atualizar métricas
     update_sheets_metrics()
-
     invalidate_cache("leads")
     invalidate_cache("metrics")
    
     socketio.emit("lead_status_changed", {"lead_id": lead_id, "status": status}, room="gestores")
     return jsonify({"success": True})
+
 
 
 @app.route("/api/leads/<int:lead_id>/transfer", methods=["POST"])
@@ -411,16 +483,160 @@ def transfer_lead(lead_id):
     db.add_lead_log(lead_id, "lead_transferido", uname, f"Lead transferido")
     audit_logger.log_action(session["user_id"], "lead_transferred", "lead", lead_id, f"Para vendedor {vendedor_id}")
     
-    # 📊 Sincronizar com Google Sheets
     sync_lead_to_sheets(lead_id)
     
     socketio.emit("lead_transferred", {"lead_id": lead_id, "vendedor_id": vendedor_id}, room="gestores")
     return jsonify({"success": True})
 
+
+# ============================================
+# 🆕 KANBAN COM FILTROS
+# ============================================
+
+@app.route("/api/leads/kanban", methods=["GET"])
+@rate_limit('per_minute')
+@login_required
+def get_leads_kanban():
+    """
+    Retorna leads organizados por status (para Kanban)
+    Admin/Gestor: todos os leads
+    Vendedor: apenas seus leads
+    """
+    role = session["role"]
+    uid = session["user_id"]
+    vendedor_filter = request.args.get('vendedor_id', type=int)
+    
+    try:
+        conn = db.get_connection()
+        c = conn.cursor()
+        
+        # Construir query base
+        if role in ["admin", "gestor"]:
+            where_clause = "WHERE 1=1"
+            params = []
+            
+            # Filtro opcional por vendedor
+            if vendedor_filter:
+                where_clause += " AND l.assigned_to = ?"
+                params.append(vendedor_filter)
+        elif role == "vendedor":
+            where_clause = "WHERE l.assigned_to = ?"
+            params = [uid]
+        else:
+            conn.close()
+            return jsonify({})
+        
+        # Buscar leads com informações do vendedor
+        c.execute(f"""
+            SELECT 
+                l.*,
+                u.name as assigned_to_name,
+                u.username as assigned_to_username
+            FROM leads l
+            LEFT JOIN users u ON l.assigned_to = u.id
+            {where_clause}
+            ORDER BY l.priority DESC, l.lead_score DESC, l.updated_at DESC
+        """, params)
+        
+        all_leads = [dict(row) for row in c.fetchall()]
+        
+        # Adicionar tags
+        for lead in all_leads:
+            lead['tags'] = db.get_lead_tags(lead['id'])
+        
+        # Organizar por status
+        kanban_data = {
+            'novo': [],
+            'em_atendimento': [],
+            'qualificado': [],
+            'negociacao': [],
+            'ganho': [],
+            'perdido': []
+        }
+        
+        for lead in all_leads:
+            status = lead.get('status', 'novo')
+            if status in kanban_data:
+                kanban_data[status].append(lead)
+        
+        # Estatísticas
+        stats = {
+            'total': len(all_leads),
+            'por_status': {status: len(leads) for status, leads in kanban_data.items()},
+            'por_vendedor': {}
+        }
+        
+        # Contar por vendedor (apenas para admin/gestor)
+        if role in ["admin", "gestor"]:
+            c.execute(f"""
+                SELECT 
+                    u.name as vendedor,
+                    COUNT(*) as total
+                FROM leads l
+                LEFT JOIN users u ON l.assigned_to = u.id
+                {where_clause}
+                GROUP BY u.id, u.name
+            """, params)
+            
+            for row in c.fetchall():
+                vendedor_name = row['vendedor'] or 'Sem vendedor'
+                stats['por_vendedor'][vendedor_name] = row['total']
+        
+        conn.close()
+        
+        return jsonify({
+            'leads': kanban_data,
+            'stats': stats
+        })
+        
+    except Exception as e:
+        print(f"❌ Erro ao buscar leads kanban: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# 🆕 LISTA DE VENDEDORES
+# ============================================
+
+@app.route("/api/vendedores", methods=["GET"])
+@rate_limit('per_minute')
+@role_required("admin", "gestor")
+def get_vendedores():
+    """Retorna lista de vendedores para filtros"""
+    try:
+        conn = db.get_connection()
+        c = conn.cursor()
+        
+        c.execute("""
+            SELECT 
+                u.id,
+                u.name,
+                u.username,
+                COUNT(l.id) as total_leads
+            FROM users u
+            LEFT JOIN leads l ON l.assigned_to = u.id
+            WHERE u.role = 'vendedor' AND u.active = 1
+            GROUP BY u.id, u.name, u.username
+            ORDER BY u.name
+        """)
+        
+        vendedores = [dict(row) for row in c.fetchall()]
+        conn.close()
+        
+        return jsonify(vendedores)
+        
+    except Exception as e:
+        print(f"❌ Erro ao buscar vendedores: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # =======================
 # MENSAGENS
 # =======================
 @app.route("/api/leads/<int:lead_id>/messages", methods=["GET"])
+
+
+
 @rate_limit('per_minute')
 @login_required
 @handle_errors
@@ -437,12 +653,10 @@ def get_messages(lead_id):
 def send_message(lead_id):
     data = request.json
     
-    # Validar conteúdo
     valid, content = validator.validate_text(data.get("content"), max_length=4096, field_name="Mensagem")
     if not valid:
         return jsonify({"error": content}), 400
     
-    # Sanitizar HTML
     content = validator.sanitize_html(content)
     
     uid = session["user_id"]
@@ -457,7 +671,6 @@ def send_message(lead_id):
         db.add_lead_log(lead_id, "mensagem_enviada", uname, content[:80])
         audit_logger.log_action(uid, "message_sent", "message", lead_id, f"Mensagem enviada para lead {lead_id}")
         
-        # 📊 Sincronizar mensagem com Google Sheets
         sync_message_to_sheets({
             'id': db.get_connection().cursor().lastrowid,
             'lead_id': lead_id,
@@ -468,7 +681,6 @@ def send_message(lead_id):
             'status': 'enviada'
         })
         
-        # 📊 Atualizar lead no Sheets (última mensagem)
         sync_lead_to_sheets(lead_id)
     
     return jsonify({"success": success})
@@ -491,7 +703,6 @@ def get_notes(lead_id):
 def add_note(lead_id):
     data = request.json
     
-    # Validar nota
     valid, note = validator.validate_text(data.get("note"), max_length=2000, field_name="Nota")
     if not valid:
         return jsonify({"error": note}), 400
@@ -522,7 +733,7 @@ def get_lead_logs(lead_id):
     return jsonify(logs)
 
 # ========================================
-# 📊 ENDPOINT DE MÉTRICAS AVANÇADAS (CORRIGIDO)
+# 📊 ENDPOINT DE MÉTRICAS AVANÇADAS
 # ========================================
 
 from datetime import datetime, timedelta
@@ -546,14 +757,12 @@ def get_metrics():
     conn = db.get_connection()
     c = conn.cursor()
 
-    # ========= 1. BASE =========
     where_base = "WHERE l.created_at >= ?"
     params = [start_date.strftime('%Y-%m-%d %H:%M:%S')]
     if vendedor_id:
         where_base += " AND l.assigned_to = ?"
         params.append(vendedor_id)
 
-    # ========= 2. MÉTRICAS GERAIS =========
     c.execute(f'''
         SELECT 
             COUNT(*) as total_leads,
@@ -575,7 +784,6 @@ def get_metrics():
         if metrics['total_leads'] > 0 else 0
     )
 
-    # ========= 3. TEMPO MÉDIO DE RESPOSTA =========
     query_tempo = f'''
         SELECT AVG(
             (julianday(m.timestamp) - julianday(l.created_at)) * 24 * 60
@@ -599,7 +807,6 @@ def get_metrics():
     tempo = c.fetchone()
     metrics['tempo_resposta'] = round(tempo['tempo_medio'] or 0, 1)
 
-    # ========= 4. SLA =========
     meta_sla = 15
     query_sla = f'''
         SELECT 
@@ -634,7 +841,6 @@ def get_metrics():
     sla['meta_minutos'] = meta_sla
     metrics['sla_compliance'] = sla
 
-    # ========= 5. DISTRIBUIÇÃO DE CARGA =========
     c.execute(f'''
         SELECT 
             COALESCE(u.name, 'Sem atribuir') as vendedor,
@@ -655,7 +861,6 @@ def get_metrics():
         })
     metrics['distribuicao_carga'] = carga
 
-    # ========= 6. RANKING =========
     c.execute(f'''
         SELECT 
             u.name,
@@ -681,7 +886,6 @@ def get_metrics():
         })
     metrics['ranking'] = ranking
 
-    # ========= 7. FUNIL =========
     metrics['funil'] = {
         'novo': metrics.get('leads_novo', 0),
         'em_atendimento': metrics.get('leads_atendimento', 0),
@@ -713,7 +917,7 @@ def get_audit_log():
 @app.route("/api/tags", methods=["GET"])
 @rate_limit('per_minute')
 @login_required
-@cached(ttl=120, key_prefix="tags")  # ← ADICIONE ESTA LINHA
+@cached(ttl=120, key_prefix="tags")
 def get_all_tags():
     """Retorna todas as tags disponíveis"""
     try:
@@ -778,7 +982,6 @@ def add_tag_to_lead(lead_id):
         db.add_lead_log(lead_id, "tag_adicionada", session["name"], f"Tag ID {tag_id}")
         audit_logger.log_action(session["user_id"], "tag_added_to_lead", "lead", lead_id, f"Tag {tag_id}")
         
-        # 📊 Sincronizar com Google Sheets
         sync_lead_to_sheets(lead_id)
         
         return jsonify({"success": True})
@@ -802,7 +1005,6 @@ def remove_tag_from_lead(lead_id, tag_id):
         db.add_lead_log(lead_id, "tag_removida", session["name"], f"Tag ID {tag_id}")
         audit_logger.log_action(session["user_id"], "tag_removed_from_lead", "lead", lead_id, f"Tag {tag_id}")
         
-        # 📊 Sincronizar com Google Sheets
         sync_lead_to_sheets(lead_id)
         
         return jsonify({"success": True})
@@ -875,7 +1077,7 @@ def get_sla_alerts():
         return jsonify([])
 
 # =======================
-# WEBHOOK DO WHATSAPP - ✅ COM SINCRONIZAÇÃO SHEETS
+# WEBHOOK DO WHATSAPP - ✅ SEM DUPLICAÇÃO
 # =======================
 @app.route("/api/webhook/message", methods=["POST"])
 @rate_limit('per_hour')
@@ -885,12 +1087,10 @@ def webhook_message():
     print(f"📩 Webhook recebido: {data}")
 
     try:
-        # ✅ Suporta tanto formato Baileys (from/body) quanto Venom (phone/content)
         phone_raw = data.get("from") or data.get("phone", "")
         content = data.get("body") or data.get("content", "")
         name = data.get("notifyName") or data.get("name", "Lead")
         
-        # Limpa telefone
         phone = str(phone_raw).strip().replace("+", "").replace(" ", "").replace("-", "").replace("@c.us", "").replace("@s.whatsapp.net", "")
         content = str(content).strip()
         name = str(name).strip()
@@ -908,26 +1108,18 @@ def webhook_message():
             print("⚠️ Webhook ignorado (sem conteúdo).")
             return jsonify({"error": "Sem conteúdo"}), 400
 
-        # 🔹 Cria ou busca o lead
         lead = db.create_or_get_lead(phone, name)
         
         if not lead:
             print(f"❌ Erro ao criar/buscar lead para {phone}")
             return jsonify({"error": "Erro ao processar lead"}), 500
         
-        # 🔔 Notificar novo lead
         notification_service.notify_new_lead(lead, room='gestores')
-
-        # 📊 Sincronizar lead com Google Sheets
         sync_lead_to_sheets(lead["id"])
 
-        # 🔹 Registra mensagem
         db.add_message(lead["id"], "lead", name, content)
-
-        # 🔔 Notificar nova mensagem
         notification_service.notify_new_message(lead, content, room='gestores')
         
-        # 📊 Sincronizar mensagem com Google Sheets
         sync_message_to_sheets({
             'id': db.get_connection().cursor().lastrowid,
             'lead_id': lead["id"],
@@ -938,50 +1130,49 @@ def webhook_message():
             'status': 'recebida'
         })
 
-        # 🔹 Log de histórico
         db.add_lead_log(lead["id"], "mensagem_recebida", name, content[:100])
 
         # 🤖 RESPOSTA AUTOMÁTICA DA IA
+        resposta_ia_enviada = False
         if ia_assistant:
             try:
                 resposta_ia = ia_assistant.processar_mensagem(lead["id"], content)
 
                 if resposta_ia:
-                    # Enviar resposta via WhatsApp
-                    success = whatsapp.send_message(phone, resposta_ia, vendedor_id=0)
-
+                    success = whatsapp.send_message(
+                        phone=phone, 
+                        content=resposta_ia, 
+                        vendedor_id=0,
+                        bypass_lead_check=True
+                    )
 
                     if success:
-                        # Registrar mensagem da IA no banco
-                        db.add_message(lead["id"], "ia", "Assistente Virtual", resposta_ia)
-                        db.increment_ia_message_count(lead["id"])
-
-                        # Log da ação
-                        db.add_lead_log(lead["id"], "ia_resposta", "IA Assistant", resposta_ia[:100])
-
-                        # Notificar via Socket.io
+                        resposta_ia_enviada = True
+                        print(f"🤖 IA respondeu ao lead {lead['id']} via WhatsApp")
+                        
                         socketio.emit("new_message", {
                             "lead_id": lead["id"],
                             "phone": phone,
-                            "name": "Assistente Virtual",
+                            "name": "Assistente IA",
                             "content": resposta_ia,
                             "timestamp": datetime.now().isoformat(),
                             "sender_type": "ia"
                         }, room="gestores")
+                    else:
+                        print(f"⚠️ IA processou mas WhatsApp offline")
 
-                        print(f"🤖 IA respondeu ao lead {lead['id']}")
             except Exception as e_ia:
                 print(f"⚠️ Erro na IA (não bloqueante): {e_ia}")
 
-        # 🔹 Emite atualização em tempo real
-        socketio.emit("new_message", {
-            "lead_id": lead["id"],
-            "phone": phone,
-            "name": name,
-            "content": content,
-            "timestamp": timestamp,
-            "sender_type": "lead"
-        }, room="gestores")
+        if not resposta_ia_enviada:
+            socketio.emit("new_message", {
+                "lead_id": lead["id"],
+                "phone": phone,
+                "name": name,
+                "content": content,
+                "timestamp": timestamp,
+                "sender_type": "lead"
+            }, room="gestores")
 
         print(f"✅ Mensagem processada com sucesso!")
         print(f"   Lead ID: {lead['id']}")
@@ -1008,7 +1199,6 @@ def simulate_message():
     """Simula recebimento de mensagem (para testes sem WhatsApp real)"""
     data = request.json
     
-    # Simula o formato do VenomBot
     simulated_data = {
         "from": data.get("phone", "") + "@c.us",
         "body": data.get("content", ""),
@@ -1017,7 +1207,6 @@ def simulate_message():
         "fromMe": False
     }
     
-    # Chama o webhook internamente
     return webhook_message()
 
 # =======================
@@ -1136,7 +1325,7 @@ def get_alerts_dashboard():
 @handle_errors
 def check_alerts_now():
     """Força verificação de alertas (apenas admin)"""
-    new_alerts = check_alerts_once(db, socketio, notification_service, whatsapp)  # ← ADICIONE whatsapp
+    new_alerts = check_alerts_once(db, socketio, notification_service, whatsapp)
     
     return jsonify({
         "success": True,
@@ -1172,7 +1361,6 @@ def set_gestor_whatsapp_config():
     data = request.json
     user_id = session["user_id"]
     
-    # Validar telefone
     phone = data.get("phone", "").strip()
     if not phone.isdigit() or len(phone) < 10:
         return jsonify({"error": "Telefone inválido"}), 400
@@ -1282,7 +1470,6 @@ def get_leads_qualificados_ia():
     """Retorna leads qualificados pela IA (prontos para atribuição)"""
     leads = db.get_leads_qualificados_ia()
 
-    # Adicionar respostas de qualificação para cada lead
     for lead in leads:
         lead['qualificacao'] = db.get_lead_qualificacao_respostas(lead['id'])
 
@@ -1314,7 +1501,6 @@ def forcar_escalacao_humano(lead_id):
     if not lead:
         return jsonify({"error": "Lead não encontrado"}), 404
 
-    # Marcar como escalado
     db.marcar_lead_escalado_humano(lead_id)
     db.update_lead_status(lead_id, "novo")
     db.add_lead_log(
@@ -1336,6 +1522,143 @@ def forcar_escalacao_humano(lead_id):
         "success": True,
         "message": "Lead escalado para atendimento humano"
     })
+
+# ============================================
+# 🔍 ROTAS DE TRIAGEM
+# ============================================
+
+@app.route('/api/triagem/metricas', methods=['GET'])
+@login_required
+def get_triagem_metricas():
+    """Retorna métricas do sistema de triagem"""
+    try:
+        if not ia_assistant:
+            return jsonify({'error': 'IA não disponível'}), 503
+        metricas = ia_assistant.triagem.get_metricas_triagem()
+        return jsonify(metricas), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/fila/inteligente', methods=['GET'])
+@login_required
+def get_fila_inteligente():
+    """Retorna fila ordenada por prioridade e score"""
+    try:
+        conn = db.get_connection()
+        c = conn.cursor()
+        
+        c.execute("""
+            SELECT 
+                l.*,
+                CASE 
+                    WHEN l.priority = 'vip' THEN 1000
+                    WHEN l.priority = 'alta' THEN 100
+                    WHEN l.priority = 'normal' THEN 10
+                    ELSE 1
+                END + l.lead_score as ranking_score
+            FROM leads l
+            WHERE l.triage_status = 'qualificado'
+              AND l.assigned_to IS NULL
+              AND l.status NOT IN ('ganho', 'perdido')
+            ORDER BY ranking_score DESC, l.created_at ASC
+            LIMIT 50
+        """)
+        
+        leads = [dict(row) for row in c.fetchall()]
+        conn.close()
+        
+        return jsonify(leads), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+# ============================================
+# 📊 ROTAS DE EXPORTAÇÃO PREMIUM
+# ============================================
+
+@app.route('/api/export/metrics/pdf', methods=['GET'])
+@login_required
+@role_required('admin', 'gestor')
+def export_metrics_pdf_premium():
+    """Exporta métricas para PDF com gráficos"""
+    period = request.args.get('period', 'month')
+    vendedor_id = request.args.get('vendedor_id', type=int)
+    
+    buffer = export_service.export_metrics_pdf_premium(period, vendedor_id)
+    
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'relatorio_crm_{datetime.now().strftime("%Y%m%d")}.pdf'
+    )
+
+
+@app.route('/api/export/metrics/excel', methods=['GET'])
+@login_required
+@role_required('admin', 'gestor')
+def export_metrics_excel_premium():
+    """Exporta métricas para Excel com gráficos"""
+    period = request.args.get('period', 'month')
+    vendedor_id = request.args.get('vendedor_id', type=int)
+    
+    buffer = export_service.export_metrics_excel_premium(period, vendedor_id)
+    
+    return send_file(
+        buffer,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'relatorio_crm_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    )
+
+
+@app.route('/api/export/leads/csv', methods=['GET'])
+@login_required
+def export_leads_csv():
+    """Exporta leads para CSV"""
+    try:
+        conn = db.get_connection()
+        c = conn.cursor()
+        
+        c.execute('''
+            SELECT l.*, u.name as vendedor_name 
+            FROM leads l 
+            LEFT JOIN users u ON l.assigned_to = u.id
+        ''')
+        leads = [dict(row) for row in c.fetchall()]
+        conn.close()
+        
+        import csv
+        from io import StringIO
+        
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        writer.writerow(['ID', 'Nome', 'Telefone', 'Status', 'Vendedor', 'Criado em'])
+        
+        for lead in leads:
+            writer.writerow([
+                lead['id'],
+                lead['name'],
+                lead['phone'],
+                lead['status'],
+                lead.get('vendedor_name', 'Sem vendedor'),
+                lead['created_at']
+            ])
+        
+        output.seek(0)
+        
+        return send_file(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'leads_crm_{datetime.now().strftime("%Y%m%d")}.csv'
+        )
+        
+    except Exception as e:
+        print(f"Erro ao exportar CSV: {e}")
+        return jsonify({"error": str(e)}), 500
+    
 
 # =======================
 # INICIALIZAÇÃO
@@ -1361,4 +1684,5 @@ if __name__ == "__main__":
         print(f"📊 Google Sheets: {sheets_service.get_spreadsheet_url()}")
     print("=" * 60)
 
-    socketio.run(app, debug=False, host="0.0.0.0", port=5000)
+    socketio.run(app, debug=False, host="0.0.0.0", port=5000, 
+                 allow_unsafe_werkzeug=True)

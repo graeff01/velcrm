@@ -3,17 +3,19 @@ import api from '../api';
 import LeadModal from './LeadModal';
 import { toast } from './Toast';
 import TagBadge from "./TagBadge";
-import TagManager from "./TagManager";  
 import '../styles/components/Kanban.css';
+import { usePermissions } from '../contexts/PermissionsContext';
 
-export default function Kanban({ user }) {
-  const [allLeads, setAllLeads] = useState([]);
+export default function Kanban({ user, onOpenLead }) {
+  const { canAccessLead, isVendedor } = usePermissions();
   const [leads, setLeads] = useState([]);
   const [draggedLead, setDraggedLead] = useState(null);
   const [selectedLead, setSelectedLead] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [vendedorFilter, setVendedorFilter] = useState(null);
+  const [vendedores, setVendedores] = useState([]);
   const [stats, setStats] = useState({
     total: 0,
     novo: 0,
@@ -36,37 +38,34 @@ export default function Kanban({ user }) {
   // ==========================
   const loadLeads = async () => {
     try {
-      setLoading(true);
-      const data = await api.getLeads();
-      setAllLeads(data);
-
-      // 🔒 FILTRA CONFORME O PAPEL DO USUÁRIO
-      let filtered = data;
-
-      if (user.role === 'vendedor') {
-        // ✅ Vendedor: SOMENTE leads atribuídos a ele
-        filtered = data.filter((l) => l.assigned_to === user.id);
-        console.log(`🔐 Vendedor ${user.name} vê ${filtered.length} leads`);
-        
-      } else if (user.role === 'gestor') {
-        // ✅ Gestor: leads da sua equipe
-        filtered = data.filter((l) => l.team_id === user.team_id);
-        console.log(`👔 Gestor ${user.name} vê ${filtered.length} leads da equipe`);
-        
-      } else if (user.role === 'admin' || user.role === 'administrador') {
-        // ✅ Admin: TUDO
-        filtered = data;
-        console.log(`👑 Admin ${user.name} vê TODOS os ${filtered.length} leads`);
+      setLoading(true); // ✅ Inicia loading
+      
+      // Buscar leads e vendedores em paralelo
+      const [leadsData, vendedoresData] = await Promise.all([
+        api.getLeads(),
+        (user.role === 'admin' || user.role === 'gestor') ? api.getVendedores() : Promise.resolve([])
+      ]);
+      
+      // 🔐 Filtrar leads baseado em permissões
+      const filteredLeads = leadsData.filter(lead => canAccessLead(lead));
+      
+      setLeads(filteredLeads);
+      calculateStats(filteredLeads);
+      
+      if (vendedoresData.length > 0) {
+        setVendedores(vendedoresData);
       }
       
-      setLeads(filtered);
-      calculateStats(filtered);
+      // Feedback visual para vendedores
+      if (isVendedor()) {
+        console.log(`📋 Exibindo ${filteredLeads.length} leads atribuídos a você`);
+      }
       
-    } catch (err) {
-      console.error('Erro ao carregar leads:', err);
-      toast.error('❌ Erro ao carregar leads');
+    } catch (error) {
+      console.error('❌ Erro ao carregar leads:', error);
+      toast.error('Erro ao carregar leads');
     } finally {
-      setLoading(false);
+      setLoading(false); // ✅ SEMPRE desliga loading
     }
   };
 
@@ -74,7 +73,7 @@ export default function Kanban({ user }) {
   // 📊 CALCULA ESTATÍSTICAS
   // ==========================
   const calculateStats = (leadsData) => {
-    const stats = {
+    const newStats = {
       total: leadsData.length,
       novo: leadsData.filter(l => l.status === 'novo').length,
       em_atendimento: leadsData.filter(l => l.status === 'em_atendimento').length,
@@ -82,7 +81,7 @@ export default function Kanban({ user }) {
       ganho: leadsData.filter(l => l.status === 'ganho').length,
       perdido: leadsData.filter(l => l.status === 'perdido').length,
     };
-    setStats(stats);
+    setStats(newStats);
   };
 
   useEffect(() => {
@@ -99,6 +98,11 @@ export default function Kanban({ user }) {
   const getFilteredLeads = () => {
     let filtered = leads;
 
+    // Filtro por vendedor (admin/gestor)
+    if (vendedorFilter) {
+      filtered = filtered.filter(l => l.assigned_to === vendedorFilter);
+    }
+
     // Filtro por status
     if (filterStatus !== 'all') {
       filtered = filtered.filter(l => l.status === filterStatus);
@@ -106,8 +110,9 @@ export default function Kanban({ user }) {
 
     // Busca por nome ou telefone
     if (searchTerm) {
+      const term = searchTerm.toLowerCase();
       filtered = filtered.filter(l => 
-        l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        l.name?.toLowerCase().includes(term) ||
         l.phone?.includes(searchTerm)
       );
     }
@@ -120,8 +125,8 @@ export default function Kanban({ user }) {
   // ==========================
   const handleDragStart = (lead) => {
     // 🚫 Vendedor não pode arrastar leads de outros
-    if (user.role === 'vendedor' && lead.assigned_to !== user.id) {
-      toast.warn('🚫 Você não pode mover leads de outros vendedores.');
+    if (isVendedor() && lead.assigned_to !== user.id) {
+      toast.warn('🚫 Você não pode mover leads de outros vendedores');
       return;
     }
     setDraggedLead(lead);
@@ -137,6 +142,7 @@ export default function Kanban({ user }) {
   };
 
   const handleDrop = async (status, e) => {
+    e.preventDefault();
     e.currentTarget.classList.remove('drag-over');
     
     if (!draggedLead || draggedLead.status === status) {
@@ -145,8 +151,8 @@ export default function Kanban({ user }) {
     }
 
     // 🚫 Validação extra de permissões
-    if (user.role === 'vendedor' && draggedLead.assigned_to !== user.id) {
-      toast.warn('🚫 Você não pode mover leads de outros vendedores.');
+    if (isVendedor() && draggedLead.assigned_to !== user.id) {
+      toast.warn('🚫 Você não pode mover leads de outros vendedores');
       setDraggedLead(null);
       return;
     }
@@ -155,21 +161,19 @@ export default function Kanban({ user }) {
       await api.updateLeadStatus(draggedLead.id, status);
       
       // Atualiza localmente
-      setLeads((prev) =>
-        prev.map((l) => (l.id === draggedLead.id ? { ...l, status } : l))
-      );
-      
-      // Recalcula stats
       const updatedLeads = leads.map((l) => 
         l.id === draggedLead.id ? { ...l, status } : l
       );
+      
+      setLeads(updatedLeads);
       calculateStats(updatedLeads);
       
-      toast.success(`✅ Lead movido para ${stages.find(s => s.key === status)?.label}`);
+      const stageName = stages.find(s => s.key === status)?.label || status;
+      toast.success(`✅ Lead movido para ${stageName}`);
       
     } catch (err) {
-      console.error('Erro ao atualizar status:', err);
-      toast.error('❌ Erro ao mover lead');
+      console.error('❌ Erro ao atualizar status:', err);
+      toast.error('Erro ao mover lead');
     } finally {
       setDraggedLead(null);
     }
@@ -236,8 +240,33 @@ export default function Kanban({ user }) {
   // ==========================
   // 🧱 RENDER PRINCIPAL
   // ==========================
+  
   return (
     <>
+      {/* 🔐 Indicador de Filtro por Perfil */}
+      {isVendedor() && (
+        <div style={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          padding: '12px 20px',
+          borderRadius: '10px',
+          margin: '0 0 20px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)'
+        }}>
+          <span style={{ fontSize: '20px' }}>👤</span>
+          <div>
+            <strong style={{ display: 'block', marginBottom: '2px', color: '#fff' }}>
+              Visualização Pessoal
+            </strong>
+            <span style={{ fontSize: '13px', opacity: 0.9, color: '#fff' }}>
+              Você está vendo apenas os leads atribuídos a você ({leads.length} leads)
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* TOOLBAR COM FILTROS */}
       <div className="kanban-toolbar">
         <div className="toolbar-left">
@@ -269,19 +298,38 @@ export default function Kanban({ user }) {
               <button 
                 className="clear-search"
                 onClick={() => setSearchTerm('')}
+                title="Limpar busca"
               >
                 ✕
               </button>
             )}
           </div>
 
+          {/* FILTRO POR VENDEDOR (admin/gestor) */}
+          {(user.role === 'admin' || user.role === 'gestor') && vendedores.length > 0 && (
+            <select
+              value={vendedorFilter || ''}
+              onChange={(e) => setVendedorFilter(e.target.value ? parseInt(e.target.value) : null)}
+              className="filter-select"
+              title="Filtrar por vendedor"
+            >
+              <option value="">Todos os vendedores</option>
+              {vendedores.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.total_leads || 0} leads)
+                </option>
+              ))}
+            </select>
+          )}
+
           {/* FILTRO POR STATUS */}
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
             className="filter-select"
+            title="Filtrar por status"
           >
-            <option value="all">Todos</option>
+            <option value="all">Todos os status</option>
             {stages.map(stage => (
               <option key={stage.key} value={stage.key}>
                 {stage.label}
@@ -294,8 +342,9 @@ export default function Kanban({ user }) {
             className="btn-refresh"
             onClick={loadLeads}
             disabled={loading}
+            title="Atualizar leads"
           >
-            🔄
+            {loading ? '⏳' : '🔄'}
           </button>
         </div>
       </div>
@@ -312,7 +361,9 @@ export default function Kanban({ user }) {
           onClose={() => setSelectedLead(null)}
           onOpenChat={(lead) => {
             setSelectedLead(null);
-            console.log('🟢 Abrir lead no chat:', lead);
+            if (onOpenLead) {
+              onOpenLead(lead);
+            }
           }}
           onUpdate={loadLeads}
         />
@@ -346,12 +397,12 @@ function LeadCard({ lead, onDragStart, onSelect, user }) {
 
   // 🎨 Cor do card baseada na urgência
   const getUrgencyClass = () => {
-    if (!lead.last_interaction) return '';
+    if (!lead.updated_at) return '';
     
-    const hoursSinceInteraction = (new Date() - new Date(lead.last_interaction)) / (1000 * 60 * 60);
+    const hoursSinceUpdate = (new Date() - new Date(lead.updated_at)) / (1000 * 60 * 60);
     
-    if (hoursSinceInteraction > 48) return 'urgent-high';
-    if (hoursSinceInteraction > 24) return 'urgent-medium';
+    if (hoursSinceUpdate > 48) return 'urgent-high';
+    if (hoursSinceUpdate > 24) return 'urgent-medium';
     return '';
   };
 
@@ -371,8 +422,8 @@ function LeadCard({ lead, onDragStart, onSelect, user }) {
       <div className="lead-card-header">
         <span className="lead-id">#{lead.id}</span>
         {isOwner && <span className="owner-badge">👤 Meu</span>}
-        {lead.last_interaction && (
-          <span className="time-ago">{getTimeAgo(lead.last_interaction)}</span>
+        {lead.updated_at && (
+          <span className="time-ago">{getTimeAgo(lead.updated_at)}</span>
         )}
       </div>
 
@@ -390,8 +441,8 @@ function LeadCard({ lead, onDragStart, onSelect, user }) {
       {/* TAGS */}
       {lead.tags && lead.tags.length > 0 && (
         <div className="lead-tags">
-          {lead.tags.slice(0, 2).map((tag, idx) => (
-            <TagBadge key={idx} tag={tag} />
+          {lead.tags.slice(0, 2).map((tag) => (
+            <TagBadge key={tag.id} tag={tag} />
           ))}
           {lead.tags.length > 2 && (
             <span className="more-tags">+{lead.tags.length - 2}</span>
@@ -401,9 +452,9 @@ function LeadCard({ lead, onDragStart, onSelect, user }) {
 
       {/* FOOTER DO CARD */}
       <div className="lead-card-footer">
-        {lead.assigned_user_name && (
+        {lead.assigned_to_name && (
           <span className="assigned-to">
-            👤 {lead.assigned_user_name}
+            👤 {lead.assigned_to_name}
           </span>
         )}
         {!isDraggable && (

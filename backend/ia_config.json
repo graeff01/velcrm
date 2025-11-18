@@ -3,51 +3,138 @@
   "modelo": "gpt-4o-mini",
   "max_mensagens_ia": 20,
   "timeout_qualificacao_minutos": 30,
-
-  "saudacao": "Olá! 👋 Sou a assistente virtual da {empresa}.\n\nFicarei feliz em ajudar você! Para te atender melhor, vou fazer algumas perguntas rápidas. Tudo bem?",
-
+  
   "empresa": "MinhaEmpresa",
-
+  
+  "saudacao": "Olá! 👋 Sou a assistente virtual da {empresa}.\n\nFicarei feliz em ajudar você! Para te atender melhor, vou fazer algumas perguntas rápidas. Tudo bem?",
+  
   "perguntas_qualificacao": [
     {
       "id": "nome",
       "pergunta": "Qual seu nome completo?",
       "campo_lead": "name",
       "obrigatoria": true,
-      "tipo": "texto"
+      "tipo": "texto",
+      "validacao": {
+        "min_palavras": 2,
+        "regex": "^[A-Za-zÀ-ÿ\\s]+$",
+        "erro": "Por favor, informe seu nome completo (nome e sobrenome)"
+      },
+      "score": {
+        "completo": 20,
+        "incompleto": 5
+      }
     },
     {
       "id": "interesse",
       "pergunta": "Qual produto ou serviço te interessa?",
       "campo_lead": "interesse",
       "obrigatoria": true,
-      "tipo": "texto"
+      "tipo": "texto",
+      "score": {
+        "resposta_detalhada": 25,
+        "resposta_basica": 10
+      },
+      "keywords_alto_valor": ["premium", "completo", "enterprise", "ilimitado", "profissional"],
+      "keywords_baixo_valor": ["barato", "grátis", "teste", "só olhando"]
     },
     {
       "id": "orcamento",
       "pergunta": "Qual seu orçamento aproximado? (Pode ser uma faixa de valores)",
       "campo_lead": "orcamento",
       "obrigatoria": false,
-      "tipo": "texto"
+      "tipo": "texto",
+      "score": {
+        "premium": 30,
+        "alto": 25,
+        "medio": 15,
+        "baixo": 5,
+        "nao_informado": 0
+      },
+      "ranges": {
+        "premium": {"min": 10000, "keywords": ["10 mil", "20 mil", "50 mil", "100 mil"]},
+        "alto": {"min": 5000, "keywords": ["5 mil", "8 mil", "7 mil"]},
+        "medio": {"min": 2000, "keywords": ["2 mil", "3 mil", "4 mil"]},
+        "baixo": {"min": 0, "keywords": ["1 mil", "até 2 mil"]}
+      }
     },
     {
       "id": "prazo",
       "pergunta": "Para quando você precisa?",
       "campo_lead": "prazo",
       "obrigatoria": false,
-      "tipo": "texto"
+      "tipo": "texto",
+      "score": {
+        "urgente": 25,
+        "curto": 20,
+        "medio": 10,
+        "longo": 5
+      },
+      "keywords_urgencia": {
+        "imediato": ["hoje", "agora", "imediato", "urgente", "já"],
+        "curto": ["semana", "dias", "breve", "rápido"],
+        "medio": ["mês", "próximo mês"],
+        "longo": ["trimestre", "ano", "futuro", "depois"]
+      }
     },
     {
       "id": "contato",
       "pergunta": "Como prefere ser contatado? (WhatsApp, Email, Telefone)",
       "campo_lead": "preferencia_contato",
       "obrigatoria": false,
-      "tipo": "texto"
+      "tipo": "multipla_escolha",
+      "opcoes": ["WhatsApp", "Email", "Telefone", "Qualquer um"],
+      "score": {
+        "whatsapp": 15,
+        "telefone": 15,
+        "email": 10,
+        "qualquer": 12
+      }
+    },
+    {
+      "id": "empresa",
+      "pergunta": "Você está comprando para uso pessoal ou empresarial?",
+      "campo_lead": "tipo_cliente",
+      "obrigatoria": false,
+      "tipo": "multipla_escolha",
+      "opcoes": ["Pessoal", "Empresa"],
+      "score": {
+        "empresa": 20,
+        "pessoal": 10
+      },
+      "condicional": {
+        "se": "empresa",
+        "proxima_pergunta": "tamanho_empresa"
+      }
+    },
+    {
+      "id": "tamanho_empresa",
+      "pergunta": "Quantas pessoas trabalham na sua empresa?",
+      "campo_lead": "tamanho_empresa",
+      "obrigatoria": false,
+      "tipo": "texto",
+      "depende_de": "empresa",
+      "score": {
+        "grande": 30,
+        "media": 20,
+        "pequena": 10
+      },
+      "ranges": {
+        "grande": {"min": 50, "keywords": ["50", "100", "mais de 50"]},
+        "media": {"min": 10, "keywords": ["10", "20", "30"]},
+        "pequena": {"min": 1, "keywords": ["1", "5", "pequena"]}
+      }
     }
   ],
-
-  "mensagem_qualificado": "Perfeito, {nome}! ✅\n\n📋 Resumo das suas informações:\n{resumo}\n\nVou conectar você com um de nossos especialistas agora! Ele já tem todas essas informações e vai te atender em breve. 👨‍💼",
-
+  
+  "mensagem_qualificado": "Perfeito, {nome}! ✅\n\n📋 Resumo das suas informações:\n{resumo}\n\n{mensagem_personalizada}\n\nVou conectar você com um de nossos especialistas agora! Ele já tem todas essas informações e vai te atender em breve. 👨‍💼",
+  
+  "mensagens_personalizadas": {
+    "score_alto": "Vejo que você tem um projeto muito interessante! Nosso time top vai adorar te atender. 🌟",
+    "score_medio": "Temos ótimas soluções que vão te ajudar!",
+    "score_baixo": "Vamos encontrar a melhor opção para você!"
+  },
+  
   "keywords_humano": [
     "falar com humano",
     "atendente",
@@ -56,18 +143,96 @@
     "pessoa",
     "alguém real",
     "não quero robô",
-    "quero falar com alguém"
+    "quero falar com alguém",
+    "atendimento humano",
+    "pessoa de verdade"
   ],
-
+  
+  "keywords_negativas": [
+    "não quero",
+    "não preciso",
+    "não tenho interesse",
+    "só estava olhando",
+    "muito caro",
+    "não vale a pena"
+  ],
+  
   "mensagem_escalar": "Entendido! Vou te conectar com um atendente humano agora. Por favor, aguarde um momento. 👨‍💼",
-
-  "prompt_sistema": "Você é um assistente virtual de atendimento profissional e amigável.\n\nSuas responsabilidades:\n1. Fazer perguntas de qualificação de forma natural e conversacional\n2. Ser educado, prestativo e usar emojis moderadamente\n3. Adaptar suas perguntas baseado nas respostas anteriores\n4. Não inventar informações sobre produtos ou preços\n5. Se não souber algo, escalar para um humano\n\nTom de voz: Profissional mas amigável, como um consultor experiente.\n\nImportante:\n- Faça UMA pergunta por vez\n- Seja breve (máximo 3 linhas)\n- Use linguagem simples\n- Agradeça cada resposta antes da próxima pergunta",
-
+  
+  "prompt_sistema": "Você é um assistente virtual de atendimento profissional e amigável.\n\nSuas responsabilidades:\n1. Fazer perguntas de qualificação de forma natural e conversacional\n2. Ser educado, prestativo e usar emojis moderadamente\n3. Adaptar suas perguntas baseado nas respostas anteriores\n4. Não inventar informações sobre produtos ou preços\n5. Se não souber algo, escalar para um humano\n6. Detectar sinais de urgência e priorizar adequadamente\n7. Identificar leads de alto valor e usar linguagem mais consultiva\n\nTom de voz: Profissional mas amigável, como um consultor experiente.\n\nImportante:\n- Faça UMA pergunta por vez\n- Seja breve (máximo 3 linhas)\n- Use linguagem simples\n- Agradeça cada resposta antes da próxima pergunta\n- Se detectar falta de interesse, tente reengajar sutilmente\n- Se o lead mencionar concorrentes, não fale mal deles\n- NUNCA invente preços ou prazos",
+  
   "max_tokens": 150,
   "temperature": 0.7,
-
+  
+  "scoring": {
+    "minimo_qualificado": 40,
+    "minimo_vip": 80,
+    "minimo_alta_prioridade": 60,
+    "penalidades": {
+      "respostas_evasivas": -10,
+      "keywords_negativas": -15,
+      "timeout": -5
+    }
+  },
+  
+  "fluxos_condicionais": {
+    "habilitado": true,
+    "regras": [
+      {
+        "se": "orcamento == 'premium' AND prazo == 'urgente'",
+        "acao": "prioridade = 'vip'",
+        "notificar": "gestor",
+        "mensagem_especial": "🔥 Lead VIP detectado! Orçamento alto + Urgência"
+      },
+      {
+        "se": "keywords_negativas > 2",
+        "acao": "enviar_recuperacao",
+        "delay_horas": 24,
+        "template": "lead_frio_reengajamento"
+      }
+    ]
+  },
+  
+  "recuperacao_leads": {
+    "habilitado": true,
+    "templates": {
+      "lead_frio_reengajamento": {
+        "delay_horas": 24,
+        "mensagem": "Oi {nome}! 😊\n\nNotei que você estava interessado em {interesse}.\n\nMudou de ideia ou ainda posso te ajudar com algo?"
+      },
+      "sem_resposta": {
+        "delay_horas": 2,
+        "mensagem": "Olá {nome}! 👋\n\nEstou por aqui caso precise de mais informações.\n\nTem alguma dúvida?"
+      }
+    }
+  },
+  
+  "analise_sentimento": {
+    "habilitado": true,
+    "keywords_positivos": ["ótimo", "perfeito", "adorei", "legal", "interessante", "gostei"],
+    "keywords_negativos": ["ruim", "péssimo", "caro demais", "não gostei", "complicado"],
+    "ajuste_score": {
+      "muito_positivo": 10,
+      "positivo": 5,
+      "neutro": 0,
+      "negativo": -5,
+      "muito_negativo": -10
+    }
+  },
+  
+  "integracao_crm": {
+    "atualizar_campos_automaticamente": true,
+    "criar_tarefas_automaticas": true,
+    "notificar_gestor_vip": true,
+    "webhook_qualificacao": "http://localhost:5000/api/ia/webhook/qualificado"
+  },
+  
   "fallback_sem_api": {
     "habilitado": true,
     "mensagem": "Obrigado pela mensagem! Um de nossos atendentes irá responder em breve. 😊"
-  }
+  },
+  
+  "modo_debug": false,
+  "log_conversas": true,
+  "versao": "2.0.0"
 }

@@ -2,7 +2,6 @@ import axios from "axios";
 
 const API_URL = "http://localhost:5000/api";
 
-// Configura axios para manter sessão autenticada
 axios.defaults.withCredentials = true;
 
 const api = {
@@ -54,6 +53,12 @@ const api = {
     return response.data;
   },
 
+  // 👥 VENDEDORES
+getVendedores: async () => {
+  const response = await axios.get(`${API_URL}/vendedores`);
+  return response.data;
+},
+
   // =============================
   // 💬 LEADS
   // =============================
@@ -97,7 +102,7 @@ const api = {
     return response.data;
   },
 
-// =============================
+  // =============================
   // 🗒️ NOTAS INTERNAS
   // =============================
   getNotes: async (leadId) => {
@@ -106,9 +111,10 @@ const api = {
   },
 
   addNote: async (leadId, note) => {
-  const response = await axios.post(`${API_URL}/leads/${leadId}/notes`, { note });
-  return response.data;
-},
+    const response = await axios.post(`${API_URL}/leads/${leadId}/notes`, { note });
+    return response.data;
+  },
+
 
   // =============================
   // 📜 TIMELINE DO LEAD
@@ -143,7 +149,6 @@ const api = {
     const response = await axios.get(`${API_URL}/audit-log`, { params });
     return response.data;
   },
-  
 
   // =============================
   // 🧪 SIMULADOR (modo DEV)
@@ -156,6 +161,7 @@ const api = {
     });
     return response.data;
   },
+
   // =============================
   // 🏷️ TAGS
   // =============================
@@ -205,8 +211,119 @@ const api = {
     });
     return response.data;
   },
+
+  // =============================
+  // 📊 EXPORTAÇÃO DE RELATÓRIOS
+  // =============================
+  exportPDF: async (period = 'month', vendedorId = null) => {
+    try {
+      let url = `${API_URL}/export/metrics/pdf?period=${period}`;
+      if (vendedorId) url += `&vendedor_id=${vendedorId}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('Erro ao exportar PDF');
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `relatorio_crm_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      console.log('✅ PDF exportado com sucesso!');
+    } catch (error) {
+      console.error('❌ Erro ao exportar PDF:', error);
+      alert('Erro ao exportar PDF. Verifique o console.');
+    }
+  },
+
+  exportExcel: async (period = 'month', vendedorId = null) => {
+    try {
+      let url = `${API_URL}/export/metrics/excel?period=${period}`;
+      if (vendedorId) url += `&vendedor_id=${vendedorId}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('Erro ao exportar Excel');
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `relatorio_crm_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      console.log('✅ Excel exportado com sucesso!');
+    } catch (error) {
+      console.error('❌ Erro ao exportar Excel:', error);
+      alert('Erro ao exportar Excel. Verifique o console.');
+    }
+  },
+
+  exportCSV: async (period = 'month', vendedorId = null) => {
+    try {
+      let url = `${API_URL}/export/leads/csv?period=${period}`;
+      if (vendedorId) url += `&vendedor_id=${vendedorId}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('Erro ao exportar CSV');
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `leads_crm_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      console.log('✅ CSV exportado com sucesso!');
+    } catch (error) {
+      console.error('❌ Erro ao exportar CSV:', error);
+      alert('Erro ao exportar CSV. Verifique o console.');
+    }
+  },
+
+  // =============================
+  // 🔧 MÉTODOS GENÉRICOS
+  // =============================
+  get: async (endpoint) => {
+    const response = await axios.get(`${API_URL}${endpoint}`);
+    return response;
+  },
+
+  post: async (endpoint, data) => {
+    const response = await axios.post(`${API_URL}${endpoint}`, data);
+    return response;
+  },
+
+  put: async (endpoint, data) => {
+    const response = await axios.put(`${API_URL}${endpoint}`, data);
+    return response;
+  },
+
+  delete: async (endpoint) => {
+    const response = await axios.delete(`${API_URL}${endpoint}`);
+    return response;
+  }
 };
-
-
 
 export default api;

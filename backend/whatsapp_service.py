@@ -20,14 +20,14 @@ class WhatsAppService:
     # UTILITÁRIOS
     # =============================
     def validate_phone(self, phone):
-        """Valida e normaliza número de telefone"""
+        """Valida e normaliza número de telefone para formato brasileiro"""
         if not phone:
             return None
         
         # Remove caracteres não numéricos
         phone_clean = ''.join(filter(str.isdigit, str(phone)))
         
-        # Valida comprimento mínimo
+        # Valida comprimento mínimo (DDD + número)
         if len(phone_clean) < 10:
             print(f"⚠️ Telefone inválido (muito curto): {phone}")
             return None
@@ -37,7 +37,16 @@ class WhatsAppService:
             print(f"⚠️ Telefone inválido (muito longo): {phone}")
             return None
         
-        return phone_clean
+        # Adiciona +55 se não tiver DDI
+        if not phone_clean.startswith('55'):
+            phone_clean = '55' + phone_clean
+        
+        # Formata para exibição: +55 51 994003224
+        if len(phone_clean) >= 12:
+            formatted = f"+{phone_clean[:2]} {phone_clean[2:4]} {phone_clean[4:]}"
+            print(f"📱 Número formatado: {formatted}")
+        
+        return phone_clean  # Retorna só números para envio
 
     # =============================
     # STATUS DE CONEXÃO E HEALTH CHECK
@@ -167,7 +176,7 @@ class WhatsAppService:
     # ENVIAR MENSAGEM (LEAD OU GESTOR)
     # =============================
     def send_message(self, phone, content, vendedor_id=None, bypass_lead_check=False):
-        """Envia mensagem via VenomBot com retry (aceita bypass para gestores)"""
+        """Envia mensagem via Baileys com retry"""
         
         # Validações
         phone = self.validate_phone(phone)
@@ -206,47 +215,46 @@ class WhatsAppService:
                         continue
                     return False
 
-                lead = self.db.get_lead_by_phone(phone)
+                # ✅ MODIFICADO: Só salvar se tiver vendedor_id (não é IA)
+                if vendedor_id is not None and vendedor_id > 0:
+                    lead = self.db.get_lead_by_phone(phone)
+                    
+                    if not lead and not bypass_lead_check:
+                        print(f"⚠️ Nenhum lead encontrado com o número {phone}. Mensagem não será enviada.")
+                        return False
 
-                # ⚠️ NOVO: permite envio para gestores sem lead
-                if not lead and not bypass_lead_check:
-                    print(f"⚠️ Nenhum lead encontrado com o número {phone}. Mensagem não será enviada.")
-                    return False
+                    if lead:
+                        vendedor_name = "Vendedor"
+                        users = self.db.get_all_users()
+                        user = next((u for u in users if u["id"] == vendedor_id), None)
+                        if user:
+                            vendedor_name = user["name"]
 
-                vendedor_name = "Vendedor"
-                if vendedor_id:
-                    users = self.db.get_all_users()
-                    user = next((u for u in users if u["id"] == vendedor_id), None)
-                    if user:
-                        vendedor_name = user["name"]
+                        self.db.add_message(
+                            lead_id=lead["id"],
+                            sender_type="vendedor",
+                            sender_name=vendedor_name,
+                            content=content
+                        )
 
-                # Só salva se for lead real
-                if lead:
-                    self.db.add_message(
-                        lead_id=lead["id"],
-                        sender_type="vendedor",
-                        sender_name=vendedor_name,
-                        content=content
-                    )
+                        self.db.add_lead_log(
+                            lead_id=lead["id"],
+                            action="mensagem_enviada",
+                            user_name=vendedor_name,
+                            details=content[:100]
+                        )
 
-                    self.db.add_lead_log(
-                        lead_id=lead["id"],
-                        action="mensagem_enviada",
-                        user_name=vendedor_name,
-                        details=content[:100]
-                    )
+                        # Emite evento de envio
+                        self.socketio.emit("message_sent", {
+                            "lead_id": lead["id"],
+                            "phone": phone,
+                            "content": content,
+                            "timestamp": datetime.now().isoformat(),
+                            "sender_type": "vendedor",
+                            "sender_id": vendedor_id
+                        })
 
-                # Emite evento de envio para o front-end
-                self.socketio.emit("message_sent", {
-                    "lead_id": lead["id"] if lead else None,
-                    "phone": phone,
-                    "content": content,
-                    "timestamp": datetime.now().isoformat(),
-                    "sender_type": "vendedor",
-                    "sender_id": vendedor_id
-                })
-
-                print("✅ Mensagem enviada com sucesso (lead ou gestor)")
+                print("✅ Mensagem enviada com sucesso")
                 return True
 
             except Exception as e:

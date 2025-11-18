@@ -1,0 +1,127 @@
+.export-buttons {
+  background: linear-gradient(180deg, #111b21, #0d1418);
+  border: 1px solid #1f2c33;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+}
+
+.export-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #00a884;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2a3942;
+}
+
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border: 1px solid #2a3942;
+  border-radius: 10px;
+  background: #1a232a;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+}
+
+.export-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 168, 132, 0.2);
+}
+
+.export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-btn.pdf {
+  border-left: 3px solid #ef4444;
+}
+
+.export-btn.pdf:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-left-color: #ff5555;
+}
+
+.export-btn.excel {
+  border-left: 3px solid #10b981;
+}
+
+.export-btn.excel:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.1);
+  border-left-color: #14d999;
+}
+
+.export-btn.csv {
+  border-left: 3px solid #3b82f6;
+}
+
+.export-btn.csv:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.1);
+  border-left-color: #60a5fa;
+}
+
+.export-btn-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.export-btn-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.export-btn-desc {
+  font-size: 11px;
+  color: #8696a0;
+}
+
+.export-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(0, 168, 132, 0.1);
+  border-radius: 8px;
+  color: #00a884;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(0, 168, 132, 0.3);
+  border-top-color: #00a884;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .export-grid {
+    grid-template-columns: 1fr;
+  }
+}

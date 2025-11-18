@@ -4,10 +4,10 @@
   "description": "Integração VenomBot para CRM WhatsApp Multi-Atendente",
   "main": "venom_integration.js",
   "scripts": {
-    "start": "node venom_integration.js",
-    "dev": "nodemon venom_integration.js"
+    "start": "node whatsapp-baileys.js"
   },
   "dependencies": {
+    "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^6.7.21",
     "axios": "^1.6.2",
     "cors": "^2.8.5",

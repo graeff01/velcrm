@@ -1,173 +1,931 @@
-/* ======== CONTAINER PRINCIPAL ======== */
+/* ============================================
+   💬 CHAT MESSAGES - DESIGN ULTRA PREMIUM v3.0
+   ============================================ */
+
+/* Container principal do chat */
 .chat-container {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  background: radial-gradient(circle at 20% 20%, #10181f 0%, #0a0f14 100%);
-  background-image: repeating-linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.02) 0,
-    rgba(255, 255, 255, 0.02) 1px,
-    transparent 2px,
-    transparent 4px
-  );
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  height: 100%;
+  background: #0b141a;
+  color: #e9edef;
+}
+
+/* Container de mensagens com scroll suave */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  background: linear-gradient(to bottom, #0b141a 0%, #0d1418 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-behavior: smooth;
+}
+
+/* Scroll personalizado premium */
+.chat-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: rgba(26, 36, 44, 0.5);
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00a884 0%, #00c89d 100%);
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00c89d 0%, #02e0b0 100%);
+  box-shadow: 0 0 8px rgba(0, 168, 132, 0.5);
+}
+
+/* ============================================
+   💬 MENSAGENS
+   ============================================ */
+
+.message {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  animation: messageSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  margin-bottom: 4px;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message.from-lead {
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+.message.from-vendedor {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+.message.from-ia {
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+/* ============================================
+   👤 AVATARES DAS MENSAGENS
+   ============================================ */
+
+.message-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  position: relative;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.message-avatar:hover {
+  transform: scale(1.1);
+}
+
+.message.from-lead .message-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.message.from-vendedor .message-avatar {
+  background: linear-gradient(135deg, #00a884 0%, #00c89d 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 168, 132, 0.5);
+}
+
+.message.from-ia .message-avatar {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  animation: aiPulse 3s ease-in-out infinite;
+  box-shadow: 0 4px 16px rgba(240, 147, 251, 0.6);
+}
+
+@keyframes aiPulse {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(240, 147, 251, 0.6);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 6px 24px rgba(245, 87, 108, 0.8);
+    transform: scale(1.05);
+  }
+}
+
+.message.from-ia .message-avatar::after {
+  content: '🤖';
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  font-size: 14px;
+  background: #0b141a;
+  border-radius: 50%;
+  padding: 2px;
+  border: 2px solid #f093fb;
+}
+
+/* ============================================
+   💭 BUBBLES DAS MENSAGENS
+   ============================================ */
+
+.message-bubble {
+  max-width: 65%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  position: relative;
+  word-wrap: break-word;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.message-bubble:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.message.from-lead .message-bubble {
+  background: linear-gradient(135deg, #1f2c33 0%, #1a242c 100%);
+  color: #e9edef;
+  border-bottom-left-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.message.from-vendedor .message-bubble {
+  background: linear-gradient(135deg, #005c4b 0%, #004d3f 100%);
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 168, 132, 0.3);
+}
+
+.message.from-ia .message-bubble {
+  background: linear-gradient(135deg, rgba(240, 147, 251, 0.12) 0%, rgba(245, 87, 108, 0.12) 100%);
+  color: #e9edef;
+  border: 1.5px solid rgba(240, 147, 251, 0.4);
+  border-bottom-left-radius: 4px;
+  backdrop-filter: blur(12px);
   position: relative;
   overflow: hidden;
 }
 
-/* ======== CABEÇALHO ======== */
-.chat-header {
-  padding: 14px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(8px);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: sticky;
+.message.from-ia .message-bubble::before {
+  content: '';
+  position: absolute;
   top: 0;
-  z-index: 5;
-}
-.chat-header h3 {
-  font-size: 1rem;
-  color: #fff;
-  font-weight: 600;
-  margin: 0;
-}
-.chat-header p {
-  font-size: 0.85rem;
-  color: #8fa3b0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.1) 50%, 
+    transparent 100%
+  );
+  animation: shimmer 3s infinite;
 }
 
-/* ======== ÁREA DAS MENSAGENS ======== */
-.chat-messages {
-  flex: 1;
-  padding: 24px 20px;
-  overflow-y: auto;
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+.message.from-ia .message-bubble::after {
+  content: '✨';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 14px;
+  animation: sparkleFloat 2s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes sparkleFloat {
+  0%, 100% {
+    opacity: 0.6;
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px) rotate(10deg);
+  }
+}
+
+.message-sender {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  opacity: 0.9;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-  scroll-behavior: smooth;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.3px;
 }
 
-/* ======== BOLHAS ======== */
-.message {
-  display: flex;
-  flex-direction: column;
+.message.from-ia .message-sender::after {
+  content: 'IA';
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  font-size: 9px;
+  padding: 3px 7px;
+  border-radius: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(240, 147, 251, 0.4);
+  animation: badgePulse 2s ease-in-out infinite;
 }
 
-.message-bubble {
-  max-width: 70%;
-  padding: 12px 16px;
-  border-radius: 14px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  animation: fadeIn 0.25s ease;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.message-content {
+  font-size: 14.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
   position: relative;
-  transition: transform 0.2s ease;
-}
-
-.message-bubble:hover {
-  transform: translateY(-1px);
-}
-
-/* Mensagem do lead (cliente) */
-.from-lead .message-bubble {
-  background: #1b242c;
-  color: #e4e4e4;
-  align-self: flex-start;
-  border-bottom-left-radius: 4px;
-  border-top-left-radius: 4px;
-}
-
-/* Mensagem do atendente */
-.from-vendedor .message-bubble {
-  background: linear-gradient(145deg, #00a884, #00c394);
-  color: #fff;
-  align-self: flex-end;
-  border-bottom-right-radius: 4px;
-  border-top-right-radius: 4px;
+  z-index: 2;
 }
 
 .message-time {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.6);
-  margin-top: 4px;
-  text-align: right;
-}
-
-/* ======== SCROLLBAR ======== */
-.chat-messages::-webkit-scrollbar {
-  width: 8px;
-}
-.chat-messages::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-}
-.chat-messages::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-/* ======== INPUT DE MENSAGEM ======== */
-.chat-input-wrapper {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 6px;
   display: flex;
   align-items: center;
-  padding: 12px 18px;
-  background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(6px);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  position: sticky;
-  bottom: 0;
+  gap: 4px;
+  font-weight: 500;
 }
+
+.message.from-vendedor .message-time {
+  justify-content: flex-end;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.message.from-vendedor .message-time::after {
+  content: '✓✓';
+  color: #53bdeb;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ============================================
+   🤖 TYPING INDICATOR
+   ============================================ */
+
+.typing-indicator {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+  animation: messageSlideIn 0.4s ease;
+}
+
+.typing-dots {
+  background: linear-gradient(135deg, rgba(240, 147, 251, 0.12) 0%, rgba(245, 87, 108, 0.12) 100%);
+  padding: 14px 20px;
+  border-radius: 12px;
+  border-bottom-left-radius: 4px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  border: 1.5px solid rgba(240, 147, 251, 0.4);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 12px rgba(240, 147, 251, 0.3);
+}
+
+.typing-dots span {
+  width: 9px;
+  height: 9px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 50%;
+  animation: typingBounce 1.4s infinite ease-in-out;
+  box-shadow: 0 2px 4px rgba(240, 147, 251, 0.4);
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+.typing-text {
+  color: #e9edef;
+  font-size: 12px;
+  margin-left: 6px;
+  opacity: 0.85;
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* ============================================
+   📱 HEADER DO CHAT
+   ============================================ */
+
+.chat-header {
+  background: linear-gradient(135deg, #1f2c33 0%, #1a242c 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #00a884 0%, #00c89d 100%);
+  box-shadow: 0 2px 8px rgba(0, 168, 132, 0.5);
+}
+
+.chat-header h3 {
+  color: #e9edef;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: 0.3px;
+}
+
+.chat-header p {
+  color: #8696a0;
+  font-size: 13px;
+  margin: 0;
+  font-weight: 500;
+}
+
+.chat-header h3::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  background: #00a884;
+  border-radius: 50%;
+  animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(0, 168, 132, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 168, 132, 0); }
+}
+
+/* ============================================
+   💬 INPUT AREA
+   ============================================ */
+
+.chat-input-wrapper {
+  display: flex;
+  gap: 14px;
+  padding: 18px 24px;
+  background: linear-gradient(135deg, #1f2c33 0%, #1a242c 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  align-items: center;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
+}
+
 .chat-input-wrapper input {
   flex: 1;
-  background: #121a20;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 12px 14px;
-  color: #fff;
-  font-size: 0.9rem;
+  background: #2a3942;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 14px 22px;
+  color: #e9edef;
+  font-size: 14.5px;
   outline: none;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 .chat-input-wrapper input:focus {
   border-color: #00a884;
-  box-shadow: 0 0 0 2px #00a88444;
+  box-shadow: 0 0 0 4px rgba(0, 168, 132, 0.15);
+  background: #0b141a;
+  transform: translateY(-1px);
 }
+
 .chat-input-wrapper input::placeholder {
-  color: #7c8a97;
+  color: #8696a0;
 }
+
 .chat-input-wrapper button {
-  background: linear-gradient(145deg, #00a884, #00c394);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
   border: none;
+  background: linear-gradient(135deg, #00a884 0%, #00c89d 100%);
   color: white;
-  border-radius: 10px;
-  padding: 10px;
-  margin-left: 10px;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 4px 16px rgba(0, 168, 132, 0.4);
+  position: relative;
+  overflow: hidden;
 }
+
 .chat-input-wrapper button:hover {
-  background: linear-gradient(145deg, #00c394, #00e3a8);
-  transform: translateY(-1px);
+  transform: scale(1.08) rotate(5deg);
+  box-shadow: 0 6px 20px rgba(0, 168, 132, 0.6);
 }
+
 .chat-input-wrapper button:active {
   transform: scale(0.95);
 }
 
-/* ======== ANIMAÇÕES ======== */
-@keyframes fadeIn {
+/* ============================================
+   📋 LEAD CARD - STATUS E VENDEDOR LADO A LADO
+   ============================================ */
+
+.lead-item {
+  background: linear-gradient(135deg, #1a1f26 0%, #141920 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.lead-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 12px;
+  padding: 2px;
+  background: linear-gradient(135deg, #00a884 0%, #00c89d 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.lead-item:hover {
+  transform: translateX(6px) translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 168, 132, 0.18);
+  border-color: rgba(0, 168, 132, 0.3);
+}
+
+.lead-item:hover::before {
+  opacity: 1;
+}
+
+.lead-item.active {
+  background: linear-gradient(135deg, #1f2c33 0%, #1a242c 100%);
+  border-color: #00a884;
+  box-shadow: 0 6px 28px rgba(0, 168, 132, 0.3);
+  transform: translateX(6px);
+}
+
+/* ============================================
+   📌 HEADER
+   ============================================ */
+
+.lead-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.lead-name {
+  color: #e9edef;
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  letter-spacing: 0.2px;
+  line-height: 1.3;
+}
+
+.lead-time {
+  color: #8696a0;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(134, 150, 160, 0.08);
+  padding: 2px 6px;
+  border-radius: 8px;
+  line-height: 1.3;
+}
+
+/* ============================================
+   📱 TELEFONE
+   ============================================ */
+
+.lead-last-message {
+  color: #8696a0;
+  font-size: 11px;
+  margin: 6px 0;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.3;
+}
+
+.lead-last-message::before {
+  content: '📞';
+  font-size: 11px;
+}
+
+/* ============================================
+   🏷️ FOOTER - LADO A LADO (FLEXBOX ROW)
+   ============================================ */
+
+.lead-footer {
+  display: flex;
+  flex-direction: row; /* 👈 MUDANÇA PRINCIPAL: row ao invés de column */
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  flex-wrap: wrap; /* Permite quebra em telas pequenas */
+}
+
+/* ============================================
+   🎯 STATUS BADGE - COMPACTO
+   ============================================ */
+
+.lead-status {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+  width: fit-content;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  line-height: 1.4;
+  flex-shrink: 0; /* Não encolhe */
+}
+
+.lead-status:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+/* Status Colors */
+.status-novo {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+}
+
+.status-em_atendimento {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+}
+
+.status-qualificado {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+
+.status-negociacao {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: white;
+}
+
+.status-ganho {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: white;
+}
+
+.status-perdido {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+}
+
+/* ============================================
+   👨‍💼 VENDEDOR INFO - COMPACTO (LADO A LADO)
+   ============================================ */
+
+.lead-vendedor-info-avatar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.06) 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  overflow: hidden;
+  flex: 1; /* Ocupa espaço restante */
+  min-width: 0; /* Permite encolher */
+}
+
+.lead-vendedor-info-avatar::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 70%
+  );
+  transform: rotate(45deg);
+  transition: all 0.5s ease;
+  opacity: 0;
+}
+
+.lead-vendedor-info-avatar:hover::before {
+  opacity: 1;
+  left: 100%;
+}
+
+.lead-vendedor-info-avatar:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(37, 99, 235, 0.08) 100%);
+  border-color: rgba(59, 130, 246, 0.35);
+  transform: translateX(2px);
+  box-shadow: 0 3px 12px rgba(59, 130, 246, 0.2);
+}
+
+/* Avatar circular - MENOR */
+.vendedor-avatar-small {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 900;
+  font-size: 10px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 2;
+  position: relative;
+}
+
+.lead-vendedor-info-avatar:hover .vendedor-avatar-small {
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: 0 3px 12px rgba(59, 130, 246, 0.5);
+}
+
+/* Texto do vendedor - INLINE */
+.vendedor-info-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  z-index: 2;
+}
+
+.vendedor-label-small {
+  font-size: 7px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.vendedor-name-small {
+  font-size: 10px;
+  color: #3b82f6;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 2px rgba(59, 130, 246, 0.2);
+  line-height: 1.2;
+}
+
+/* ============================================
+   🔘 BOTÃO
+   ============================================ */
+
+.btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 700;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  position: relative;
+  overflow: hidden;
+  line-height: 1.4;
+  width: 100%; /* Botão ocupa linha inteira */
+  margin-top: 4px; /* Espaço acima quando aparece */
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #00a884 0%, #00c89d 100%);
+  color: white;
+  box-shadow: 0 3px 10px rgba(0, 168, 132, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 16px rgba(0, 168, 132, 0.5);
+}
+
+.btn-primary:active {
+  transform: translateY(-1px) scale(0.98);
+}
+
+/* ============================================
+   📊 ESTADO VAZIO
+   ============================================ */
+
+.empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #8696a0;
+  font-size: 12px;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(26, 31, 38, 0.4) 0%, rgba(20, 25, 32, 0.4) 100%);
+  border-radius: 12px;
+  border: 1px dashed rgba(134, 150, 160, 0.15);
+}
+
+.empty::before {
+  content: '📭';
+  display: block;
+  font-size: 36px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+
+/* ============================================
+   🎨 ANIMAÇÕES
+   ============================================ */
+
+@keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateX(-15px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
+}
+
+.lead-item {
+  animation: slideIn 0.3s ease-out backwards;
+}
+
+.lead-item:nth-child(1) { animation-delay: 0.05s; }
+.lead-item:nth-child(2) { animation-delay: 0.1s; }
+.lead-item:nth-child(3) { animation-delay: 0.15s; }
+.lead-item:nth-child(4) { animation-delay: 0.2s; }
+.lead-item:nth-child(5) { animation-delay: 0.25s; }
+
+/* ============================================
+   📱 RESPONSIVIDADE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .lead-item {
+    padding: 10px;
+  }
+
+  .lead-name {
+    font-size: 13px;
+  }
+
+  .lead-footer {
+    gap: 6px;
+  }
+
+  .lead-status {
+    padding: 3px 8px;
+    font-size: 8px;
+  }
+
+  .lead-vendedor-info-avatar {
+    padding: 3px 6px;
+    gap: 5px;
+  }
+
+  .vendedor-avatar-small {
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+  }
+
+  .vendedor-label-small {
+    font-size: 6px;
+  }
+
+  .vendedor-name-small {
+    font-size: 9px;
+  }
+}
+
+/* Telas muito pequenas - quebra linha */
+@media (max-width: 380px) {
+  .lead-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lead-status {
+    width: 100%;
+  }
+
+  .lead-vendedor-info-avatar {
+    width: 100%;
+  }
+}
+
+/* ============================================
+   🎯 AJUSTES EXTRAS
+   ============================================ */
+
+.lead-item:hover .lead-vendedor-info-avatar {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%);
+}
+
+.lead-item.active .lead-vendedor-info-avatar {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18) 0%, rgba(37, 99, 235, 0.12) 100%);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 3px 12px rgba(59, 130, 246, 0.25);
+}
+
+/* Scrollbar */
+.leads-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.leads-list::-webkit-scrollbar-track {
+  background: rgba(26, 36, 44, 0.3);
+  border-radius: 3px;
+}
+
+.leads-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00a884 0%, #00c89d 100%);
+  border-radius: 3px;
+}
+
+.leads-list::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00c89d 0%, #02e0b0 100%);
 }

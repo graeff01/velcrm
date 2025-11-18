@@ -1,56 +1,44 @@
 """
 Sistema de Alertas e Monitoramento de Performance
-Inspirado em RD Station, Pipedrive e HubSpot
-
-Funcionalidades:
-- Alertas de SLA (tempo de resposta)
-- Monitoramento de performance
-- Detecção de leads "abandonados"
-- Alertas para gestores
+Versão simplificada - apenas alertas funcionais
 """
 
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-import sqlite3
+import json
 
 
 class AlertSystem:
-    """
-    Sistema profissional de alertas e monitoramento
-    """
+    """Sistema profissional de alertas e monitoramento"""
     
     # Configurações de SLA (em minutos)
     SLA_CONFIGS = {
-    'primeira_resposta': {
-        'warning': 0.016,      # 1 segundo
-        'danger': 0.05,        # 3 segundos  
-        'critical': 0.1        # 6 segundos
-    },
-    'resposta_subsequente': {
-        'warning': 0.5,
-        'danger': 2,
-        'critical': 6
-    },
-    'lead_assumido': {
-        'warning': 0.016,      # 1 segundo
-        'danger': 0.05,        # 3 segundos
-        'critical': 0.1        # 6 segundos
+        'primeira_resposta': {
+            'warning': 15,
+            'danger': 30,
+            'critical': 60
+        },
+        'resposta_subsequente': {
+            'warning': 30,
+            'danger': 60,
+            'critical': 120
+        },
+        'lead_assumido': {
+            'warning': 15,
+            'danger': 30,
+            'critical': 60
+        }
     }
-}
     
     # Configurações de performance
     PERFORMANCE_THRESHOLDS = {
-        'taxa_resposta_minima': 80,        # 80% de taxa de resposta
-        'tempo_medio_resposta': 60,        # 60 minutos
-        'leads_por_dia_minimo': 3,         # Mínimo 3 leads/dia
-        'taxa_conversao_minima': 20        # 20% de conversão
+        'taxa_resposta_minima': 80,
+        'tempo_medio_resposta': 60,
+        'leads_por_dia_minimo': 3,
+        'taxa_conversao_minima': 20
     }
     
     def __init__(self, db):
-        """
-        Args:
-            db: Instância do Database
-        """
         self.db = db
         self._create_alerts_table()
     
@@ -91,38 +79,25 @@ class AlertSystem:
         conn.close()
     
     def check_all_alerts(self) -> List[Dict[str, Any]]:
-        """
-        Verifica todos os tipos de alertas
-        Returns:
-            Lista de alertas gerados
-        """
+        """Verifica todos os tipos de alertas"""
         alerts = []
         
-        # 1. Alertas de SLA - Primeira resposta
+        # APENAS AS 4 VERIFICAÇÕES QUE FUNCIONAM:
         alerts.extend(self.check_first_response_sla())
-        
-        # 2. Alertas de lead assumido mas não respondido
         alerts.extend(self.check_assigned_no_response())
-        
-        # 3. Alertas de leads abandonados
         alerts.extend(self.check_abandoned_leads())
-        
-        # 4. Alertas de performance baixa
         alerts.extend(self.check_low_performance())
         
         return alerts
     
     def check_first_response_sla(self) -> List[Dict[str, Any]]:
-        """
-        Verifica leads que precisam de primeira resposta
-        """
+        """Verifica leads que precisam de primeira resposta"""
         conn = self.db.get_connection()
         c = conn.cursor()
         
         alerts = []
         now = datetime.now()
         
-        # Buscar leads novos sem resposta
         c.execute('''
             SELECT l.*, u.name as vendedor_name
             FROM leads l
@@ -159,23 +134,20 @@ class AlertSystem:
                         'minutes_waiting': int(minutes_waiting)
                     }
                 )
-                alerts.append(alert)
+                if alert:
+                    alerts.append(alert)
         
         conn.close()
         return alerts
     
     def check_assigned_no_response(self) -> List[Dict[str, Any]]:
-        """
-        Verifica vendedores que assumiram lead mas não responderam
-        Detecta: "pegou lead só para marcar território"
-        """
+        """Verifica vendedores que assumiram lead mas não responderam"""
         conn = self.db.get_connection()
         c = conn.cursor()
         
         alerts = []
         now = datetime.now()
         
-        # Buscar atribuições recentes sem resposta
         c.execute('''
             SELECT 
                 l.*,
@@ -218,21 +190,20 @@ class AlertSystem:
                         'action_suggestion': 'Considerar redistribuir lead'
                     }
                 )
-                alerts.append(alert)
+                if alert:
+                    alerts.append(alert)
         
         conn.close()
         return alerts
     
     def check_abandoned_leads(self) -> List[Dict[str, Any]]:
-        """
-        Detecta leads que estão sem interação há muito tempo
-        """
+        """Detecta leads que estão sem interação há muito tempo"""
         conn = self.db.get_connection()
         c = conn.cursor()
         
         alerts = []
         now = datetime.now()
-        threshold_hours = 24  # 24h sem interação
+        threshold_hours = 24
         
         c.execute('''
             SELECT 
@@ -273,21 +244,19 @@ class AlertSystem:
                         'hours_abandoned': int(hours_abandoned)
                     }
                 )
-                alerts.append(alert)
+                if alert:
+                    alerts.append(alert)
         
         conn.close()
         return alerts
     
     def check_low_performance(self) -> List[Dict[str, Any]]:
-        """
-        Detecta vendedores com performance abaixo do esperado
-        """
+        """Detecta vendedores com performance abaixo do esperado"""
         conn = self.db.get_connection()
         c = conn.cursor()
         
         alerts = []
         
-        # Taxa de resposta por vendedor (últimos 7 dias)
         c.execute('''
             SELECT 
                 u.id,
@@ -328,7 +297,8 @@ class AlertSystem:
                             'leads_respondidos': vendedor['leads_respondidos']
                         }
                     )
-                    alerts.append(alert)
+                    if alert:
+                        alerts.append(alert)
         
         conn.close()
         return alerts
@@ -350,12 +320,10 @@ class AlertSystem:
                      message: str, data: Dict, lead_id: int = None, 
                      vendedor_id: int = None) -> Dict[str, Any]:
         """Cria um alerta no banco de dados"""
-        import json
-        
         conn = self.db.get_connection()
         c = conn.cursor()
         
-        # Verificar se alerta similar já existe (últimas 2 horas)
+        # Verificar se alerta similar já existe
         c.execute('''
             SELECT id FROM system_alerts
             WHERE alert_type = ?
@@ -369,7 +337,7 @@ class AlertSystem:
         
         if existing:
             conn.close()
-            return None  # Já existe alerta similar
+            return None
         
         # Criar novo alerta
         c.execute('''
@@ -395,11 +363,7 @@ class AlertSystem:
         }
     
     def get_active_alerts(self, vendedor_id: int = None) -> List[Dict[str, Any]]:
-        """
-        Busca alertas ativos
-        Args:
-            vendedor_id: Se fornecido, filtra por vendedor
-        """
+        """Busca alertas ativos"""
         conn = self.db.get_connection()
         c = conn.cursor()
         
@@ -437,7 +401,6 @@ class AlertSystem:
         # Parse JSON data
         for alert in alerts:
             if alert.get('data'):
-                import json
                 alert['data'] = json.loads(alert['data'])
         
         return alerts
@@ -461,7 +424,6 @@ class AlertSystem:
         conn = self.db.get_connection()
         c = conn.cursor()
         
-        # Total de alertas ativos por severidade
         c.execute('''
             SELECT 
                 severity,
@@ -473,7 +435,6 @@ class AlertSystem:
         
         by_severity = {row['severity']: row['count'] for row in c.fetchall()}
         
-        # Alertas por tipo
         c.execute('''
             SELECT 
                 alert_type,

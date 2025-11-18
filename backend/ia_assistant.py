@@ -1,12 +1,12 @@
+# -*- coding: utf-8 -*-
 """
 🤖 IA ASSISTANT - Motor de Qualificação de Leads
-Responsável por:
-- Conversar com leads automaticamente
-- Fazer perguntas de qualificação
-- Detectar quando escalar para humano
-- Marcar leads como qualificados
+VERSÃO 2.1 - CORRIGIDO E INTEGRADO
+Compatível com ia_config.json v2.0.0
 """
 
+from triagem_inteligente import TriagemInteligente, classificar_lead_simples
+from automacoes_poderosas import AutomacoesPoderosas, processar_lead_qualificado
 import json
 import os
 from datetime import datetime, timedelta
@@ -15,33 +15,69 @@ import re
 
 
 class IAAssistant:
-    def __init__(self, database, config_path="ia_config.json"):
+    """
+    Motor principal de qualificação de leads com IA
+    Integra: OpenAI + Triagem Inteligente + Automações
+    """
+    
+    def __init__(self, database, whatsapp_service=None, config_path="ia_config.json"):
         """
         Inicializa o assistente de IA
 
         Args:
             database: Instância do Database
+            whatsapp_service: Instância do WhatsAppService (opcional)
             config_path: Caminho para arquivo de configuração
         """
         self.db = database
+        self.whatsapp = whatsapp_service
+        self.config_path = config_path
         self.config = self._carregar_config(config_path)
 
-        # Inicializar OpenAI (se API key disponível)
+        # ✅ CORRIGIDO: Inicializar OpenAI (se API key disponível)
         api_key = os.getenv("OPENAI_API_KEY")
         self.openai_habilitada = bool(api_key)
 
         if self.openai_habilitada:
             self.client = OpenAI(api_key=api_key)
-            print("✅ OpenAI inicializada")
+            print("✅ OpenAI inicializada com sucesso")
         else:
-            print("⚠️ OPENAI_API_KEY não encontrada - usando fallback")
+            self.client = None
+            print("⚠️ OPENAI_API_KEY não encontrada - usando fallback sem IA")
+
+        # ✅ CORRIGIDO: Inicializar Sistema de Triagem
+        # Agora recebe apenas config_path
+        try:
+            self.triagem = TriagemInteligente(config_path=self.config_path)
+            print("✅ Sistema de Triagem Inteligente inicializado")
+        except Exception as e:
+            print(f"❌ Erro ao inicializar Triagem: {e}")
+            self.triagem = None
+        
+        # ✅ CORRIGIDO: Inicializar Automações
+        # Agora recebe config_path e whatsapp_service
+        try:
+            if whatsapp_service:
+                self.automacoes = AutomacoesPoderosas(
+                    config_path=self.config_path,
+                    whatsapp_service=whatsapp_service
+                )
+                print("✅ Sistema de Automações inicializado")
+            else:
+                self.automacoes = None
+                print("⚠️ Automações desabilitadas (WhatsApp não disponível)")
+        except Exception as e:
+            print(f"❌ Erro ao inicializar Automações: {e}")
+            self.automacoes = None
 
     def _carregar_config(self, path):
         """Carrega configuração do JSON"""
         try:
             config_file = os.path.join(os.path.dirname(__file__), path)
             with open(config_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                config = json.load(f)
+                print(f"✅ Configuração carregada: {config_file}")
+                return config
         except Exception as e:
             print(f"❌ Erro ao carregar config: {e}")
             return self._config_padrao()
@@ -58,65 +94,281 @@ class IAAssistant:
 
     def processar_mensagem(self, lead_id, mensagem_lead):
         """
-        Processa mensagem do lead e retorna resposta da IA
-
+        Processa mensagem do lead com Sistema de Triagem integrado
+        
+        Args:
+            lead_id: ID do lead
+            mensagem_lead: Mensagem enviada pelo lead
+            
         Returns:
             str: Resposta da IA (ou None se não deve responder)
         """
         try:
-            # Verificar se IA está habilitada
+            # ✅ 1. Verificar se IA está habilitada
             if not self.config.get("ia_habilitada", False):
                 return None
 
             lead = self.db.get_lead(lead_id)
             if not lead:
+                print(f"❌ Lead {lead_id} não encontrado")
                 return None
 
-            # 1. Verificar se lead quer falar com humano
+            # ✅ 2. Obter histórico de mensagens
+            historico = self.db.get_messages_by_lead(lead_id)
+            
+            # ✅ 3. Verificar se lead quer falar com humano
             if self._detectar_pedido_humano(mensagem_lead):
                 self._escalar_para_humano(lead_id)
                 return self.config.get("mensagem_escalar",
                     "Vou conectar você com um atendente agora!")
 
-            # 2. Verificar se já está qualificado ou atribuído
-            if lead['status'] in ['qualificado', 'em_atendimento', 'ganho', 'perdido']:
-                return None  # Não responder, já passou pela IA
+            # ✅ 4. Verificar se já está qualificado ou em atendimento
+            if lead.get('ai_qualified', False) or lead['status'] in ['em_atendimento', 'ganho', 'perdido']:
+                return None
 
-            # 3. Verificar se é primeira mensagem (enviar saudação)
-            historico = self.db.get_messages_by_lead(lead_id)
-            if len(historico) == 1:  # Apenas a mensagem do lead
-                return self._gerar_saudacao()
+            # ✅ 5. Se é primeira mensagem, enviar saudação
+            if len(historico) == 1:
+                saudacao = self._gerar_saudacao()
+                
+                self.db.add_message(
+                    lead_id=lead_id,
+                    sender_type='ia',
+                    sender_name='Assistente IA',
+                    content=saudacao
+                )
+                
+                return saudacao
 
-            # 4. Verificar timeout de qualificação
+            # ✅ 6. Verificar timeout de qualificação
             if self._timeout_expirado(lead_id):
                 self._escalar_para_humano(lead_id)
                 return "Vou te conectar com um atendente para continuar. 👨‍💼"
 
-            # 5. Verificar quantas perguntas já foram respondidas
-            perguntas_respondidas = self.db.get_lead_qualificacao_respostas(lead_id)
-            total_perguntas = len(self.config["perguntas_qualificacao"])
-
-            # 6. Se respondeu todas as obrigatórias, qualificar
+            # ✅ 7. Verificar quantas perguntas já foram respondidas
+            respostas_salvas = self.db.get_lead_qualificacao_respostas(lead_id)
+            perguntas_obrigatorias = [
+                p for p in self.config["perguntas_qualificacao"] 
+                if p.get('obrigatoria', False)
+            ]
+            
+            # ✅ 8. Se respondeu todas as obrigatórias, QUALIFICAR COM SISTEMA COMPLETO
             if self._todas_obrigatorias_respondidas(lead_id):
-                resumo = self._gerar_resumo_qualificacao(lead_id)
-                self._marcar_lead_qualificado(lead_id)
+                return self._finalizar_qualificacao(lead_id, historico)
 
-                nome = lead.get('name', 'Cliente')
-                mensagem = self.config.get("mensagem_qualificado", "Obrigado!")
-                return mensagem.format(nome=nome, resumo=resumo)
-
-            # 7. Gerar próxima pergunta com IA
-            if self.openai_habilitada:
-                return self._gerar_resposta_ia(lead_id, mensagem_lead, historico)
+            # ✅ 9. Gerar próxima pergunta com IA (ou sequencial se sem OpenAI)
+            if self.openai_habilitada and self.client:
+                resposta_ia = self._gerar_resposta_ia(lead_id, mensagem_lead, historico)
             else:
-                # Fallback: fazer perguntas sequencialmente sem IA
-                return self._proxima_pergunta_sequencial(lead_id)
+                resposta_ia = self._proxima_pergunta_sequencial(lead_id)
+            
+            if resposta_ia:
+                self.db.add_message(
+                    lead_id=lead_id,
+                    sender_type='ia',
+                    sender_name='Assistente IA',
+                    content=resposta_ia
+                )
+                
+                self.db.add_lead_log(
+                    lead_id,
+                    'ia_respondeu',
+                    'IA Assistant',
+                    f'IA enviou: {resposta_ia[:50]}...'
+                )
+            
+            return resposta_ia
 
         except Exception as e:
             print(f"❌ Erro ao processar mensagem IA: {e}")
             import traceback
             traceback.print_exc()
             return None
+
+    def _finalizar_qualificacao(self, lead_id, historico):
+        """
+        ✨ NOVO: Finaliza qualificação usando Sistema de Triagem Completo
+        Score 0-180, classificação hot/warm/cold, automações
+        """
+        try:
+            lead = self.db.get_lead(lead_id)
+            
+            # ✅ 1. Obter respostas coletadas
+            respostas_db = self.db.get_lead_qualificacao_respostas(lead_id)
+            
+            # ✅ 2. Converter para formato esperado pela Triagem
+            respostas_dict = {}
+            for resp in respostas_db:
+                pergunta_id = resp['pergunta_id']
+                
+                # Buscar campo_lead da pergunta
+                pergunta_config = next(
+                    (p for p in self.config['perguntas_qualificacao'] if p['id'] == pergunta_id),
+                    None
+                )
+                
+                if pergunta_config:
+                    campo_lead = pergunta_config.get('campo_lead', pergunta_id)
+                    respostas_dict[campo_lead] = resp['resposta']
+            
+            # ✅ 3. CALCULAR SCORE COMPLETO (0-180) COM TRIAGEM INTELIGENTE
+            if self.triagem:
+                score_data = self.triagem.calcular_score_completo(
+                    respostas=respostas_dict,
+                    historico_mensagens=historico
+                )
+                
+                print("\n" + "="*60)
+                print("🎯 QUALIFICAÇÃO COMPLETA")
+                print("="*60)
+                print(f"Score: {score_data['score_total']}/175")
+                print(f"Classificação: {score_data['classificacao'].upper()}")
+                print(f"Prioridade: {score_data['prioridade'].upper()}")
+                print(f"VIP: {'SIM ⭐' if score_data['is_vip'] else 'NÃO'}")
+                print(f"Sentimento: {score_data['sentimento']}")
+                print("="*60 + "\n")
+                
+            else:
+                # Fallback se triagem não disponível
+                score_data = {
+                    'score_total': 50,
+                    'classificacao': 'warm',
+                    'prioridade': 'normal',
+                    'is_vip': False,
+                    'sentimento': 'neutro',
+                    'qualificado': True
+                }
+            
+            # ✅ 4. ATUALIZAR LEAD NO BANCO COM TODOS OS DADOS
+            self._atualizar_lead_qualificado(lead_id, respostas_dict, score_data)
+            
+            # ✅ 5. PROCESSAR AUTOMAÇÕES (notificações, follow-up, etc)
+            if self.automacoes:
+                lead_data_completo = {
+                    'id': lead_id,
+                    'name': lead.get('name'),
+                    'phone': lead.get('phone'),
+                    **respostas_dict
+                }
+                
+                processar_lead_qualificado(
+                    lead_data=lead_data_completo,
+                    score_data=score_data,
+                    whatsapp_service=self.whatsapp,
+                    config_path=self.config_path
+                )
+            
+            # ✅ 6. GERAR MENSAGEM FINAL PERSONALIZADA
+            mensagem_final = self._gerar_mensagem_qualificacao(
+                lead_id, 
+                respostas_dict, 
+                score_data
+            )
+            
+            self.db.add_message(
+                lead_id=lead_id,
+                sender_type='ia',
+                sender_name='Assistente IA',
+                content=mensagem_final
+            )
+            
+            return mensagem_final
+        
+        except Exception as e:
+            print(f"❌ Erro ao finalizar qualificação: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Mensagem genérica de fallback
+            return "Obrigado pelas informações! Um especialista entrará em contato em breve. 😊"
+
+    def _atualizar_lead_qualificado(self, lead_id, respostas_dict, score_data):
+        """
+        Atualiza lead no banco com todos os dados da qualificação
+        """
+        try:
+            conn = self.db.get_connection()
+            c = conn.cursor()
+            
+            # ✅ Atualizar campos do lead
+            campos_update = {
+                'ai_qualified': True,
+                'qualification_score': score_data['score_total'],
+                'classification': score_data['classificacao'],
+                'prioridade': score_data['prioridade'],
+                'sentimento': score_data['sentimento'],
+                'status': 'qualificado'
+            }
+            
+            # Adicionar campos das respostas (se existirem na tabela)
+            campos_opcionais = ['interesse', 'orcamento', 'prazo', 'preferencia_contato', 
+                              'tipo_cliente', 'tamanho_empresa']
+            
+            for campo in campos_opcionais:
+                if campo in respostas_dict:
+                    campos_update[campo] = respostas_dict[campo]
+            
+            # Construir UPDATE dinamicamente
+            set_clause = ', '.join([f"{k} = ?" for k in campos_update.keys()])
+            values = list(campos_update.values()) + [lead_id]
+            
+            c.execute(f"UPDATE leads SET {set_clause} WHERE id = ?", values)
+            conn.commit()
+            conn.close()
+            
+            # Log
+            self.db.add_lead_log(
+                lead_id,
+                'ia_qualificado_completo',
+                'Sistema IA',
+                f'Lead qualificado - Score: {score_data["score_total"]}/175 - {score_data["classificacao"].upper()}'
+            )
+            
+            print(f"✅ Lead {lead_id} atualizado no banco com qualificação completa")
+        
+        except Exception as e:
+            print(f"❌ Erro ao atualizar lead qualificado: {e}")
+
+    def _gerar_mensagem_qualificacao(self, lead_id, respostas_dict, score_data):
+        """
+        Gera mensagem final personalizada baseada no score
+        """
+        lead = self.db.get_lead(lead_id)
+        nome = respostas_dict.get('name', lead.get('name', 'Cliente'))
+        
+        # ✅ Resumo das informações
+        resumo_linhas = []
+        for campo, valor in respostas_dict.items():
+            if campo != 'name':
+                label = campo.replace('_', ' ').title()
+                resumo_linhas.append(f"• {label}: {valor}")
+        
+        resumo = "\n".join(resumo_linhas) if resumo_linhas else "Informações coletadas"
+        
+        # ✅ Mensagem personalizada baseada no score
+        mensagens_personalizadas = self.config.get('mensagens_personalizadas', {})
+        score_total = score_data['score_total']
+        
+        if score_total >= 80:
+            msg_personalizada = mensagens_personalizadas.get('score_alto', 
+                'Vejo que você tem um projeto muito interessante! 🌟')
+        elif score_total >= 50:
+            msg_personalizada = mensagens_personalizadas.get('score_medio',
+                'Temos ótimas soluções que vão te ajudar!')
+        else:
+            msg_personalizada = mensagens_personalizadas.get('score_baixo',
+                'Vamos encontrar a melhor opção para você!')
+        
+        # ✅ Mensagem completa
+        template = self.config.get('mensagem_qualificado', 
+            'Perfeito, {nome}! ✅\n\nVou conectar você com um especialista.')
+        
+        mensagem = template.format(
+            nome=nome,
+            resumo=resumo,
+            mensagem_personalizada=msg_personalizada
+        )
+        
+        return mensagem
 
     def _detectar_pedido_humano(self, mensagem):
         """Detecta se lead quer falar com humano"""
@@ -131,6 +383,17 @@ class IAAssistant:
     def _escalar_para_humano(self, lead_id):
         """Marca lead para atendimento humano"""
         self.db.update_lead_status(lead_id, "novo")
+        
+        # Cancelar automações quando escalar
+        if self.automacoes:
+            try:
+                tarefas = self.automacoes.listar_tarefas_agendadas()
+                for tarefa in tarefas:
+                    if tarefa.get('lead_id') == lead_id and tarefa.get('status') == 'agendado':
+                        self.automacoes.cancelar_tarefa(tarefa['id'])
+            except Exception as e:
+                print(f"⚠️ Erro ao cancelar automações: {e}")
+        
         self.db.add_lead_log(
             lead_id,
             "ia_escalado_humano",
@@ -174,33 +437,6 @@ class IAAssistant:
 
         return True
 
-    def _gerar_resumo_qualificacao(self, lead_id):
-        """Gera resumo das informações coletadas"""
-        respostas = self.db.get_lead_qualificacao_respostas(lead_id)
-        perguntas_config = {p['id']: p for p in self.config.get("perguntas_qualificacao", [])}
-
-        resumo_linhas = []
-        for resp in respostas:
-            pergunta_id = resp['pergunta_id']
-            if pergunta_id in perguntas_config:
-                pergunta_texto = perguntas_config[pergunta_id]['pergunta']
-                # Simplificar pergunta para resumo
-                label = pergunta_texto.split('?')[0].replace('Qual seu ', '').replace('Qual ', '')
-                resumo_linhas.append(f"• {label}: {resp['resposta']}")
-
-        return "\n".join(resumo_linhas) if resumo_linhas else "Informações coletadas"
-
-    def _marcar_lead_qualificado(self, lead_id):
-        """Marca lead como qualificado pela IA"""
-        self.db.update_lead_status(lead_id, "qualificado")
-        self.db.add_lead_log(
-            lead_id,
-            "ia_qualificado",
-            "IA Assistant",
-            "Lead qualificado automaticamente pela IA"
-        )
-        print(f"✅ Lead {lead_id} qualificado pela IA")
-
     def _proxima_pergunta_sequencial(self, lead_id):
         """Faz próxima pergunta sem usar IA (modo sequencial)"""
         respostas = self.db.get_lead_qualificacao_respostas(lead_id)
@@ -209,8 +445,18 @@ class IAAssistant:
         perguntas = self.config.get("perguntas_qualificacao", [])
 
         for pergunta in perguntas:
+            # ✅ Verificar se pergunta depende de outra
+            depende_de = pergunta.get('depende_de')
+            if depende_de:
+                # Verificar se a pergunta dependente foi respondida
+                resposta_dependente = next(
+                    (r for r in respostas if r['pergunta_id'] == depende_de),
+                    None
+                )
+                if not resposta_dependente:
+                    continue
+            
             if pergunta['id'] not in ids_respondidas:
-                # Salvar que está aguardando resposta desta pergunta
                 self.db.set_lead_proxima_pergunta(lead_id, pergunta['id'])
                 return pergunta['pergunta']
 
@@ -219,10 +465,8 @@ class IAAssistant:
     def _gerar_resposta_ia(self, lead_id, mensagem_lead, historico):
         """Gera resposta usando OpenAI"""
         try:
-            # Construir contexto da conversa
             contexto = self._construir_contexto_ia(lead_id, historico)
 
-            # Chamar OpenAI
             response = self.client.chat.completions.create(
                 model=self.config.get("modelo", "gpt-4o-mini"),
                 messages=contexto,
@@ -231,8 +475,8 @@ class IAAssistant:
             )
 
             resposta_ia = response.choices[0].message.content.strip()
-
-            # Analisar se a resposta da IA coletou informação relevante
+            
+            # ✅ Salvar resposta do lead
             self._extrair_e_salvar_informacao(lead_id, mensagem_lead)
 
             return resposta_ia
@@ -246,10 +490,10 @@ class IAAssistant:
         """Constrói contexto para a IA com histórico de mensagens"""
         mensagens = []
 
-        # 1. Prompt do sistema
+        # ✅ Prompt do sistema
         prompt_sistema = self.config.get("prompt_sistema", "Você é um assistente virtual.")
 
-        # Adicionar informações sobre perguntas restantes
+        # ✅ Adicionar informações sobre perguntas pendentes
         respostas = self.db.get_lead_qualificacao_respostas(lead_id)
         ids_respondidas = [r['pergunta_id'] for r in respostas]
         perguntas_pendentes = [
@@ -264,7 +508,7 @@ class IAAssistant:
 
         mensagens.append({"role": "system", "content": prompt_sistema})
 
-        # 2. Histórico de mensagens (últimas 10)
+        # ✅ Adicionar histórico (últimas 10 mensagens)
         for msg in historico[-10:]:
             role = "user" if msg['sender_type'] == 'lead' else "assistant"
             mensagens.append({
@@ -275,50 +519,94 @@ class IAAssistant:
         return mensagens
 
     def _extrair_e_salvar_informacao(self, lead_id, mensagem_lead):
-        """Extrai informação da mensagem e associa à pergunta pendente"""
-        # Verificar qual pergunta está aguardando resposta
+        """
+        Extrai informação da mensagem e salva no banco
+        """
         proxima_pergunta_id = self.db.get_lead_proxima_pergunta(lead_id)
 
         if proxima_pergunta_id:
-            # Salvar resposta
+            # ✅ Buscar config da pergunta
+            pergunta_config = next(
+                (p for p in self.config.get("perguntas_qualificacao", []) 
+                 if p['id'] == proxima_pergunta_id), 
+                None
+            )
+            
+            if not pergunta_config:
+                return False
+            
+            # ✅ Validação básica (se configurada)
+            validacao = pergunta_config.get('validacao', {})
+            if validacao and not self._validar_resposta(mensagem_lead, validacao):
+                # Se não passar na validação, IA vai pedir de novo
+                print(f"⚠️ Resposta não passou na validação: {mensagem_lead[:50]}")
+                return False
+            
+            # ✅ Salvar resposta
             self.db.add_lead_qualificacao_resposta(
                 lead_id,
                 proxima_pergunta_id,
                 mensagem_lead
             )
+            
             print(f"📝 Resposta salva: {proxima_pergunta_id} = {mensagem_lead[:50]}")
-        else:
-            # Tentar detectar automaticamente qual pergunta foi respondida
-            self._detectar_e_salvar_resposta_automatica(lead_id, mensagem_lead)
+            return True
+        
+        return False
 
-    def _detectar_e_salvar_resposta_automatica(self, lead_id, mensagem):
-        """Tenta detectar automaticamente qual pergunta foi respondida"""
-        # Heurística simples: se mensagem contém nome próprio, pode ser resposta ao nome
-        # Se contém "R$" ou valores, pode ser orçamento, etc.
-
-        respostas = self.db.get_lead_qualificacao_respostas(lead_id)
-        ids_respondidas = [r['pergunta_id'] for r in respostas]
-
-        # Nome: começa com maiúscula e tem sobrenome
-        if 'nome' not in ids_respondidas and re.match(r'^[A-Z][a-z]+ [A-Z]', mensagem):
-            self.db.add_lead_qualificacao_resposta(lead_id, 'nome', mensagem)
-            return
-
-        # Orçamento: contém valores monetários
-        if 'orcamento' not in ids_respondidas and re.search(r'R\$|real|reais|\d+\s*mil', mensagem, re.I):
-            self.db.add_lead_qualificacao_resposta(lead_id, 'orcamento', mensagem)
-            return
-
-        # Prazo: contém referências temporais
-        if 'prazo' not in ids_respondidas and re.search(r'dia|semana|mês|mes|ano|urgente|breve', mensagem, re.I):
-            self.db.add_lead_qualificacao_resposta(lead_id, 'prazo', mensagem)
-            return
+    def _validar_resposta(self, resposta, validacao):
+        """Valida resposta baseado nas regras configuradas"""
+        # Validar mínimo de palavras
+        if 'min_palavras' in validacao:
+            palavras = resposta.strip().split()
+            if len(palavras) < validacao['min_palavras']:
+                return False
+        
+        # Validar regex
+        if 'regex' in validacao:
+            if not re.match(validacao['regex'], resposta):
+                return False
+        
+        return True
 
     def get_estatisticas(self):
         """Retorna estatísticas do assistente de IA"""
-        return {
+        stats = {
             "ia_habilitada": self.config.get("ia_habilitada", False),
             "openai_disponivel": self.openai_habilitada,
             "total_perguntas": len(self.config.get("perguntas_qualificacao", [])),
-            "modelo": self.config.get("modelo", "N/A")
+            "modelo": self.config.get("modelo", "N/A"),
+            "triagem_ativa": self.triagem is not None,
+            "automacoes_ativas": self.automacoes is not None
         }
+        
+        # ✅ Adicionar estatísticas das automações
+        if self.automacoes:
+            try:
+                relatorio = self.automacoes.gerar_relatorio_automacoes()
+                stats['automacoes'] = relatorio
+            except:
+                pass
+        
+        return stats
+    
+    def obter_metricas_completas(self):
+        """Retorna métricas completas incluindo triagem e automações"""
+        return self.get_estatisticas()
+
+
+# ✅ Função auxiliar para uso rápido
+def inicializar_ia_assistant(database, whatsapp_service=None, config_path="ia_config.json"):
+    """
+    Inicializa IAAssistant com verificação de dependências
+    
+    Returns:
+        IAAssistant ou None se falhar
+    """
+    try:
+        ia = IAAssistant(database, whatsapp_service, config_path)
+        print("✅ IAAssistant inicializado com sucesso")
+        return ia
+    except Exception as e:
+        print(f"❌ Erro ao inicializar IAAssistant: {e}")
+        return None

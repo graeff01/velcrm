@@ -3,7 +3,8 @@ import bcrypt
 import hashlib  # Manter temporariamente para migração de hashes antigos
 
 class Database:
-    def __init__(self, db_name="crm_whatsapp.db"):
+    def __init__(self, db_name="../crm.db"):
+
         self.db_name = db_name
         self.init_db()
 
@@ -31,7 +32,7 @@ class Database:
             )
         """)
 
-        # Leads
+        # Leads (com campos da IA v2.0)
         c.execute("""
             CREATE TABLE IF NOT EXISTS leads (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +41,25 @@ class Database:
                 status TEXT DEFAULT 'novo',
                 assigned_to INTEGER,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                
+                -- Campos de qualificação IA
+                ai_qualified INTEGER DEFAULT 0,
+                qualification_score INTEGER DEFAULT 0,
+                classification TEXT DEFAULT 'new',
+                prioridade TEXT DEFAULT 'normal',
+                sentimento TEXT DEFAULT 'neutro',
+                
+                -- Campos de respostas coletadas
+                interesse TEXT,
+                orcamento TEXT,
+                prazo TEXT,
+                preferencia_contato TEXT,
+                tipo_cliente TEXT,
+                tamanho_empresa TEXT,
+                
+                -- Controle de fluxo da IA
+                proxima_pergunta_id TEXT
             )
         """)
 
@@ -91,6 +110,34 @@ class Database:
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (lead_id) REFERENCES leads(id)
             )
+        """)
+
+        # ✨ NOVA TABELA: Respostas da qualificação da IA
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS lead_qualificacao_respostas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER NOT NULL,
+                pergunta_id TEXT NOT NULL,
+                resposta TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Índices para performance
+        c.execute("""
+            CREATE INDEX IF NOT EXISTS idx_qualificacao_lead_id 
+            ON lead_qualificacao_respostas(lead_id)
+        """)
+        
+        c.execute("""
+            CREATE INDEX IF NOT EXISTS idx_leads_classification 
+            ON leads(classification)
+        """)
+        
+        c.execute("""
+            CREATE INDEX IF NOT EXISTS idx_leads_ai_qualified 
+            ON leads(ai_qualified)
         """)
 
         conn.commit()
@@ -440,6 +487,100 @@ class Database:
             return []
 
     # =======================
+    # ✨ MÉTODOS DA IA v2.0
+    # =======================
+    
+    def get_lead_qualificacao_respostas(self, lead_id):
+        """
+        Retorna todas as respostas da qualificação de um lead
+        
+        Returns:
+            List[Dict]: Lista de dicionários com pergunta_id e resposta
+        """
+        conn = self.get_connection()
+        c = conn.cursor()
+        c.execute("""
+            SELECT * FROM lead_qualificacao_respostas 
+            WHERE lead_id = ? 
+            ORDER BY created_at ASC
+        """, (lead_id,))
+        respostas = [dict(r) for r in c.fetchall()]
+        conn.close()
+        return respostas
+    
+    def add_lead_qualificacao_resposta(self, lead_id, pergunta_id, resposta):
+        """
+        Adiciona uma resposta da qualificação
+        
+        Args:
+            lead_id: ID do lead
+            pergunta_id: ID da pergunta (ex: 'nome', 'interesse', etc)
+            resposta: Texto da resposta
+        """
+        conn = self.get_connection()
+        c = conn.cursor()
+        
+        # Verificar se já existe resposta para essa pergunta
+        c.execute("""
+            SELECT id FROM lead_qualificacao_respostas 
+            WHERE lead_id = ? AND pergunta_id = ?
+        """, (lead_id, pergunta_id))
+        
+        existing = c.fetchone()
+        
+        if existing:
+            # Atualizar resposta existente
+            c.execute("""
+                UPDATE lead_qualificacao_respostas 
+                SET resposta = ?, created_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (resposta, existing['id']))
+        else:
+            # Inserir nova resposta
+            c.execute("""
+                INSERT INTO lead_qualificacao_respostas (lead_id, pergunta_id, resposta)
+                VALUES (?, ?, ?)
+            """, (lead_id, pergunta_id, resposta))
+        
+        conn.commit()
+        conn.close()
+    
+    def set_lead_proxima_pergunta(self, lead_id, pergunta_id):
+        """
+        Define qual é a próxima pergunta que a IA deve fazer
+        
+        Args:
+            lead_id: ID do lead
+            pergunta_id: ID da próxima pergunta
+        """
+        conn = self.get_connection()
+        c = conn.cursor()
+        c.execute("""
+            UPDATE leads 
+            SET proxima_pergunta_id = ? 
+            WHERE id = ?
+        """, (pergunta_id, lead_id))
+        conn.commit()
+        conn.close()
+    
+    def get_lead_proxima_pergunta(self, lead_id):
+        """
+        Retorna o ID da próxima pergunta que a IA deve fazer
+        
+        Returns:
+            str: ID da pergunta ou None
+        """
+        conn = self.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT proxima_pergunta_id FROM leads WHERE id = ?", (lead_id,))
+        result = c.fetchone()
+        conn.close()
+        
+        if result and result['proxima_pergunta_id']:
+            return result['proxima_pergunta_id']
+        return None
+
+    # =======================
     # MÉTRICAS
     # =======================
     def get_metrics_summary(self):
@@ -467,4 +608,41 @@ class Database:
             "leads_ganhos": ganhos,
             "leads_perdidos": perdidos,
             "funil": funil
+        }
+    
+    def get_ia_metrics(self):
+        """
+        ✨ NOVO: Retorna métricas específicas da IA
+        """
+        conn = self.get_connection()
+        c = conn.cursor()
+        
+        # Total de leads qualificados pela IA
+        c.execute("SELECT COUNT(*) FROM leads WHERE ai_qualified = 1")
+        total_qualificados = c.fetchone()[0]
+        
+        # Leads por classificação
+        c.execute("""
+            SELECT classification, COUNT(*) as count 
+            FROM leads 
+            WHERE ai_qualified = 1 
+            GROUP BY classification
+        """)
+        por_classificacao = {row['classification']: row['count'] for row in c.fetchall()}
+        
+        # Leads VIP
+        c.execute("SELECT COUNT(*) FROM leads WHERE prioridade = 'vip'")
+        total_vip = c.fetchone()[0]
+        
+        # Score médio
+        c.execute("SELECT AVG(qualification_score) FROM leads WHERE ai_qualified = 1")
+        score_medio = c.fetchone()[0] or 0
+        
+        conn.close()
+        
+        return {
+            'total_qualificados_ia': total_qualificados,
+            'por_classificacao': por_classificacao,
+            'total_vip': total_vip,
+            'score_medio': round(score_medio, 1)
         }

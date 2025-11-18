@@ -18,7 +18,7 @@ class BaseAIProvider(ABC):
 
         Args:
             model: Nome do modelo a ser usado
-            **kwargs: Configurações adicionais específicas do provider
+            **kwargs: Configuraï¿½ï¿½es adicionais especï¿½ficas do provider
         """
         self.model = model
         self.config = kwargs
@@ -32,13 +32,13 @@ class BaseAIProvider(ABC):
         **kwargs
     ) -> str:
         """
-        Gera resposta baseada em histórico de mensagens
+        Gera resposta baseada em histï¿½rico de mensagens
 
         Args:
             messages: Lista de mensagens no formato [{"role": "user|assistant|system", "content": "..."}]
-            max_tokens: Máximo de tokens na resposta
+            max_tokens: Mï¿½ximo de tokens na resposta
             temperature: Criatividade (0-1)
-            **kwargs: Parâmetros adicionais
+            **kwargs: Parï¿½metros adicionais
 
         Returns:
             String com a resposta gerada
@@ -59,37 +59,37 @@ class BaseAIProvider(ABC):
             schema: Schema JSON dos dados a extrair
 
         Returns:
-            Dicionário com dados extraídos
+            Dicionï¿½rio com dados extraï¿½dos
         """
         pass
 
     @abstractmethod
     def get_model_info(self) -> Dict:
         """
-        Retorna informações sobre o modelo
+        Retorna informaï¿½ï¿½es sobre o modelo
 
         Returns:
-            Dicionário com informações (nome, provider, limites, etc)
+            Dicionï¿½rio com informaï¿½ï¿½es (nome, provider, limites, etc)
         """
         pass
 
     @abstractmethod
     async def health_check(self) -> bool:
         """
-        Verifica se o provider está funcionando
+        Verifica se o provider estï¿½ funcionando
 
         Returns:
-            True se estiver OK, False caso contrário
+            True se estiver OK, False caso contrï¿½rio
         """
         pass
 
     def format_messages(self, messages: List[Dict]) -> List[Dict]:
         """
         Formata mensagens para o formato do provider
-        Pode ser sobrescrito por providers específicos
+        Pode ser sobrescrito por providers especï¿½ficos
 
         Args:
-            messages: Mensagens no formato padrão
+            messages: Mensagens no formato padrï¿½o
 
         Returns:
             Mensagens no formato do provider
@@ -104,12 +104,12 @@ class BaseAIProvider(ABC):
             response: Resposta a validar
 
         Returns:
-            True se válida, False caso contrário
+            True se vï¿½lida, False caso contrï¿½rio
         """
         if not response or not response.strip():
             return False
 
-        # Validações básicas
+        # Validaï¿½ï¿½es bï¿½sicas
         if len(response) > 10000:  # Muito longo
             return False
 
@@ -117,10 +117,10 @@ class BaseAIProvider(ABC):
 
     def get_stats(self) -> Dict:
         """
-        Retorna estatísticas de uso (opcional)
+        Retorna estatï¿½sticas de uso (opcional)
 
         Returns:
-            Dicionário com estatísticas
+            Dicionï¿½rio com estatï¿½sticas
         """
         return {
             "provider": self.__class__.__name__,
